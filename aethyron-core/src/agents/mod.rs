@@ -1,6 +1,9 @@
 pub mod planner;
+pub mod tool_agent;
+pub mod coder;
 
 use async_trait::async_trait;
+use crate::models::tool_request::ToolRequest;
 
 #[derive(Debug)]
 pub struct Task {
@@ -8,14 +11,11 @@ pub struct Task {
 }
 
 #[async_trait]
-pub trait Agent: Send + Sync {
-
+pub trait Agent {
     fn name(&self) -> &str;
-
 
     async fn execute(
         &self,
-        task: Task
-    );
-
+        task: &Task
+    ) -> Option<ToolRequest>;
 }

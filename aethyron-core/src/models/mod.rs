@@ -1,1 +1,8 @@
 pub mod ollama;
+pub mod tool_request;
+pub mod tool_result;
+pub mod project_context;
+pub mod code_generator;
+pub mod file_operation;
+pub mod code_change;
+

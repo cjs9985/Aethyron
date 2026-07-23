@@ -2,32 +2,34 @@ use async_trait::async_trait;
 
 use super::{Agent, Task};
 
-use crate::models::ollama::OllamaClient;
-
+use crate::models::{
+    ollama::OllamaClient,
+    tool_request::ToolRequest
+};
 
 pub struct PlannerAgent;
-
-
 #[async_trait]
 impl Agent for PlannerAgent {
-
 
     fn name(&self) -> &str {
         "Planner Agent"
     }
 
-
     async fn execute(
         &self,
-        task: Task
-    ) {
-
+        task: &Task
+    )-> Option<ToolRequest> {
 
         println!(
             "🧭 {} analyzing mission...",
             self.name()
         );
+      let tool_request = ToolRequest::InspectProject;
 
+      println!(
+          "🧭 Planner requested tool: {:?}",
+       tool_request
+);
 
         let client =
             OllamaClient::new();
@@ -59,17 +61,14 @@ task.description
 
                 println!("\n📜 Generated Plan:\n");
                 println!("{}", plan);
-
+            Some(ToolRequest::InspectProject)
             }
-
-
-            Err(error) => {
-
-                println!(
+          Err(error) => {
+              println!(
                     "Model error: {}",
                     error
                 );
-
+               None
             }
         }
     }
