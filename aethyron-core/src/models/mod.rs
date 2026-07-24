@@ -5,4 +5,5 @@ pub mod project_context;
 pub mod code_generator;
 pub mod file_operation;
 pub mod code_change;
-
+pub mod compiler;
+pub mod fix_request;
