@@ -2,6 +2,9 @@ use std::fs::{OpenOptions, read_to_string};
 use std::io::Write;
 
 use anyhow::Result;
+use serde_json;
+
+use crate::models::mission_result::MissionResult;
 
 
 pub struct MemoryStore;
@@ -9,7 +12,7 @@ pub struct MemoryStore;
 
 impl MemoryStore {
 
-    const FILE: &'static str = "aethyron_memory.txt";
+    const FILE: &'static str = "aethyron_memory.json";
 
 
     pub fn save(
@@ -31,6 +34,18 @@ impl MemoryStore {
 
 
         Ok(())
+    }
+
+
+    pub fn save_result(
+        result: &MissionResult,
+    ) -> Result<()> {
+
+        let json =
+            serde_json::to_string(result)?;
+
+
+        Self::save(&json)
     }
 
 

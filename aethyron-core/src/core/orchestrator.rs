@@ -1,7 +1,6 @@
 use uuid::Uuid;
 use crate::memory::store::MemoryStore;
 use crate::agents::{
-    Agent,
     coder::CoderAgent,
     Task,
     planner::PlannerAgent,
@@ -12,6 +11,7 @@ use crate::core::{
     events::{Event, EventType},
     context_builder::ContextBuilder,
 };
+use crate::models::mission_result::MissionResult;
 
 #[derive(Debug)]
 pub struct Mission {
@@ -66,32 +66,39 @@ Some(&context),
 ).await {
 
    let mut queue = crate::core::task_queue::TaskQueue::new();
+   let mut files_changed: Vec<String> = Vec::new();
 
 for description in plan.tasks {
-
+    
     queue.add(Task {
         description,
     });
 }
 
-
+let mut review_notes = Vec::new();
 while let Some(task) = queue.next() {
 
-    coder.execute_with_context(
+    let changed_files = coder.execute_with_context(
         &task,
         &context,
     ).await;
-    reviewer.execute(&task).await;
+    files_changed.extend(changed_files);
+    let review = reviewer.review(&task).await;
+    review_notes.push(review.notes);
 }
-let summary = format!(
-    "Mission completed: {}",
-    mission.goal
-);
+let notes = review_notes.join("\n");
+let result = MissionResult {
+    mission_id: mission.id.to_string(),
+    goal: mission.goal.clone(),
+    success: true,
+    files_changed,
+    notes,
+};
 
-match MemoryStore::save(&summary) {
+match MemoryStore::save_result(&result) {
 
     Ok(_) => {
-        println!("🧠 Mission stored in memory.");
+        println!("🧠 Structured mission result stored.");
     }
 
     Err(error) => {

@@ -44,7 +44,9 @@ impl CoderAgent {
         &self,
         task: &Task,
         context: &ProjectContext,
-    ) {
+    ) -> Vec<String> {
+
+        let mut files_changed = Vec::new();
 
         println!("💻 {} working on task:", self.name());
         println!("{}", task.description);
@@ -85,7 +87,7 @@ impl CoderAgent {
                             error
                         );
 
-                        return;
+                        return files_changed;
                     }
                 };
 
@@ -114,6 +116,7 @@ impl CoderAgent {
                         "✅ Generated {}",
                         operation.path
                     );
+                    files_changed.push(operation.path.clone());
                 }
 
 
@@ -123,8 +126,7 @@ impl CoderAgent {
                         "❌ Write error: {}",
                         error
                     );
-
-                    return;
+                    return files_changed;
                 }
             }
 
@@ -137,7 +139,7 @@ impl CoderAgent {
                 Ok(report) => {
 
                     println!("{}", report);
-                    break;
+                    break files_changed;
                 }
 
 
@@ -155,9 +157,9 @@ impl CoderAgent {
                             "❌ Maximum repair attempts reached."
                         );
 
-                        break;
+                        break files_changed;
                     }
-
+                    
 
                     match RepairEngine::repair(
                         error.to_string(),
@@ -181,11 +183,12 @@ impl CoderAgent {
                                 e
                             );
 
-                            break;
+                            break files_changed;
                         }
                     }
                 }
             }
+    
         }
     }
 }

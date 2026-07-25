@@ -8,3 +8,5 @@ pub mod code_change;
 pub mod compiler;
 pub mod fix_request;
 pub mod plan;
+pub mod mission_result;
+pub mod review_report;
