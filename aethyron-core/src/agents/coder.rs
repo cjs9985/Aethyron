@@ -8,6 +8,7 @@ use crate::models::{
     file_operation::FileOperation,
     project_context::ProjectContext,
     tool_request::ToolRequest,
+    fix_request::FixRequest,
 };
 
 use crate::tools::editor::EditorTool;
@@ -51,54 +52,84 @@ impl CoderAgent {
 
         println!("🧠 Generating code...");
 
-        match CodeGenerator::generate(&task.description).await {
+       match CodeGenerator::generate(&task.description).await {
 
-            Ok(change) => {
+    Ok(change) => {
 
-                println!("Generated code:\n");
-                println!("{}", change.content);
+        let previous_code = change.content.clone();
 
-                let operation = FileOperation {
-                    path: change.path,
-                    content: change.content,
-                };
+        println!("Generated code:\n");
+        println!("{}", change.content);
 
-                match EditorTool::write(
-                    &operation.path,
-                    &operation.content,
-                ) {
+        let operation = FileOperation {
+            path: change.path,
+            content: change.content,
+        };
 
-                    Ok(_) => {
-                        println!("✅ Generated {}", operation.path);
-                    }
+        match EditorTool::write(
+            &operation.path,
+            &operation.content,
+        ) {
 
-                    Err(error) => {
-                        println!("❌ Write error: {}", error);
-                        return;
-                    }
-                }
+            Ok(_) => {
+                println!("✅ Generated {}", operation.path);
+            }
 
-                println!("⚙ Running cargo check...");
+            Err(error) => {
+                println!("❌ Write error: {}", error);
+                return;
+            }
+        }
 
-                match Compiler::check() {
+        println!("⚙ Running cargo check...");
 
-                    Ok(report) => {
-                        println!("{}", report);
-                    }
+        match Compiler::check() {
 
-                    Err(error) => {
-                        println!("❌ Cargo error: {}", error);
-                    }
-                }
+            Ok(report) => {
+                println!("{}", report);
             }
 
             Err(error) => {
 
-                println!(
-                    "❌ Code generation failed: {}",
-                    error
-                );
+                println!("❌ Cargo error: {}", error);
+
+                let request = FixRequest {
+                    compiler_output: error.to_string(),
+                    previous_code: previous_code.clone(),
+                };
+
+                println!("🔄 Asking Ollama to repair the code...");
+
+                match CodeGenerator::fix(&request).await {
+
+                    Ok(fix) => {
+
+                        match EditorTool::write(
+                            &fix.path,
+                            &fix.content,
+                        ) {
+
+                            Ok(_) => {
+                                println!("✅ Applied automatic fix.");
+                            }
+
+                            Err(e) => {
+                                println!("❌ Failed to apply fix: {}", e);
+                            }
+                        }
+                    }
+
+                    Err(e) => {
+                        println!("❌ Repair failed: {}", e);
+                    }
+                }
             }
         }
+    }
+
+    Err(error) => {
+        println!("❌ Code generation failed: {}", error);
+    }
+}
     }
 }
