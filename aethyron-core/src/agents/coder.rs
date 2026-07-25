@@ -17,6 +17,7 @@ pub struct CoderAgent;
 
 #[async_trait]
 impl Agent for CoderAgent {
+
     fn name(&self) -> &str {
         "Coder Agent"
     }
@@ -33,7 +34,9 @@ impl Agent for CoderAgent {
     }
 }
 
+
 impl CoderAgent {
+
     pub async fn execute_with_context(
         &self,
         task: &Task,
@@ -50,86 +53,162 @@ impl CoderAgent {
             println!("  {}", file);
         }
 
+
         println!("🧠 Generating code...");
 
-       match CodeGenerator::generate(&task.description).await {
+        const MAX_RETRIES: usize = 3;
+        let mut attempts = 0;
 
-    Ok(change) => {
 
-        let previous_code = change.content.clone();
+        loop {
 
-        println!("Generated code:\n");
-        println!("{}", change.content);
+            attempts += 1;
 
-        let operation = FileOperation {
-            path: change.path,
-            content: change.content,
-        };
 
-        match EditorTool::write(
-            &operation.path,
-            &operation.content,
-        ) {
+            let change = match CodeGenerator::generate(
+                &task.description
+            ).await {
 
-            Ok(_) => {
-                println!("✅ Generated {}", operation.path);
+                Ok(change) => change,
+
+                Err(error) => {
+
+                    println!(
+                        "❌ Code generation failed: {}",
+                        error
+                    );
+
+                    return;
+                }
+            };
+
+
+            let previous_code = change.content.clone();
+
+
+            println!("Generated code:\n");
+            println!("{}", change.content);
+
+
+            let operation = FileOperation {
+                path: change.path,
+                content: change.content,
+            };
+
+
+            match EditorTool::write(
+                &operation.path,
+                &operation.content,
+            ) {
+
+                Ok(_) => {
+                    println!(
+                        "✅ Generated {}",
+                        operation.path
+                    );
+                }
+
+
+                Err(error) => {
+
+                    println!(
+                        "❌ Write error: {}",
+                        error
+                    );
+
+                    return;
+                }
             }
 
-            Err(error) => {
-                println!("❌ Write error: {}", error);
-                return;
-            }
-        }
 
-        println!("⚙ Running cargo check...");
+            println!("⚙ Running cargo check...");
 
-        match Compiler::check() {
 
-            Ok(report) => {
-                println!("{}", report);
-            }
+            match Compiler::check() {
 
-            Err(error) => {
+                Ok(report) => {
 
-                println!("❌ Cargo error: {}", error);
+                    println!("{}", report);
 
-                let request = FixRequest {
-                    compiler_output: error.to_string(),
-                    previous_code: previous_code.clone(),
-                };
+                    println!("✅ Build successful.");
 
-                println!("🔄 Asking Ollama to repair the code...");
+                    break;
+                }
 
-                match CodeGenerator::fix(&request).await {
 
-                    Ok(fix) => {
+                Err(error) => {
 
-                        match EditorTool::write(
-                            &fix.path,
-                            &fix.content,
-                        ) {
+                    println!(
+                        "❌ Cargo error: {}",
+                        error
+                    );
 
-                            Ok(_) => {
-                                println!("✅ Applied automatic fix.");
-                            }
 
-                            Err(e) => {
-                                println!("❌ Failed to apply fix: {}", e);
-                            }
-                        }
+                    if attempts >= MAX_RETRIES {
+
+                        println!(
+                            "❌ Maximum repair attempts reached."
+                        );
+
+                        break;
                     }
 
-                    Err(e) => {
-                        println!("❌ Repair failed: {}", e);
+
+                    let request = FixRequest {
+
+                        compiler_output: error.to_string(),
+
+                        previous_code: previous_code.clone(),
+                    };
+
+
+                    println!(
+                        "🔄 Asking Ollama to repair the code..."
+                    );
+
+
+                    match CodeGenerator::fix(&request).await {
+
+                        Ok(fix) => {
+
+                            match EditorTool::write(
+                                &fix.path,
+                                &fix.content,
+                            ) {
+
+                                Ok(_) => {
+
+                                    println!(
+                                        "✅ Applied automatic fix."
+                                    );
+                                }
+
+
+                                Err(e) => {
+
+                                    println!(
+                                        "❌ Failed to apply fix: {}",
+                                        e
+                                    );
+
+                                    break;
+                                }
+                            }
+                        }
+
+
+                        Err(e) => {
+
+                            println!(
+                                "❌ Repair failed: {}",
+                                e
+                            );
+
+                            break;
+                        }
                     }
                 }
             }
         }
-    }
-
-    Err(error) => {
-        println!("❌ Code generation failed: {}", error);
-    }
-}
     }
 }

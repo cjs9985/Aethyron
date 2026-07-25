@@ -7,3 +7,4 @@ pub mod file_operation;
 pub mod code_change;
 pub mod compiler;
 pub mod fix_request;
+pub mod plan;

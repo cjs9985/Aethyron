@@ -11,7 +11,7 @@ use crate::core::{
     events::{Event, EventType},
     context_builder::ContextBuilder,
 };
-use crate::tools::filesystem::FileSystem;
+
 #[derive(Debug)]
 pub struct Mission {
     pub id: Uuid,
@@ -50,29 +50,41 @@ impl Orchestrator {
        println!("📦 Context Built");
        println!("Cargo.toml size: {}", context.cargo_toml.len());println!("Files discovered: {}", context.files.len());
 
-        let planner = PlannerAgent;
-        let coder = CoderAgent;
-        let task = Task {
-            description: mission.goal.clone(),
+let planner = PlannerAgent;
+let coder = CoderAgent;
+
+let task = Task {
+    description: mission.goal.clone(),
 };
-       let tool_request =
-    planner.execute(&task).await;
+
+
+println!("🧭 Creating mission plan...");
+
+if let Some(plan) = planner.create_plan(&task).await {
+
+    //println!("📋 Plan captured by orchestrator.");
+   for description in plan.tasks{
+    let planned_task = Task {
+        description,
+    };
+
+    /*for description in plan.tasks {
+
+    let task = Task { description };
 
     coder.execute_with_context(
-    &task, &context,).await;
+        &task,
+        &context,
+    ).await;
+}*/
+      coder.execute_with_context(
+        &planned_task,
+        &context,
+      ).await;
+    }
+} else {
 
-if let Some(request) = tool_request {
-
-    println!(
-        "🛠 Tool requested: {:?}",
-        request
-    );
-
-    let result =
-        FileSystem::inspect_project_result();
-
-    println!("🔧 Tool Result:");
-    println!("{}", result.output);
+    println!("❌ Planner failed to create tasks.");
 }
   }
 }
