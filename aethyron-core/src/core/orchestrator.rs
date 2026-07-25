@@ -62,29 +62,24 @@ println!("🧭 Creating mission plan...");
 
 if let Some(plan) = planner.create_plan(&task).await {
 
-    //println!("📋 Plan captured by orchestrator.");
-   for description in plan.tasks{
-    let planned_task = Task {
+   let mut queue = crate::core::task_queue::TaskQueue::new();
+
+for description in plan.tasks {
+
+    queue.add(Task {
         description,
-    };
+    });
+}
 
-    /*for description in plan.tasks {
 
-    let task = Task { description };
+while let Some(task) = queue.next() {
 
     coder.execute_with_context(
         &task,
         &context,
     ).await;
-}*/
-      coder.execute_with_context(
-        &planned_task,
-        &context,
-      ).await;
+}
     }
-} else {
-
-    println!("❌ Planner failed to create tasks.");
+} 
 }
-  }
-}
+  
