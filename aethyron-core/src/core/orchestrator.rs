@@ -1,10 +1,11 @@
 use uuid::Uuid;
-
+use crate::memory::store::MemoryStore;
 use crate::agents::{
     Agent,
     coder::CoderAgent,
     Task,
     planner::PlannerAgent,
+    reviewer::ReviewerAgent,
 };
 use crate::core::{
     event_bus::EventBus,
@@ -52,7 +53,7 @@ impl Orchestrator {
 
 let planner = PlannerAgent;
 let coder = CoderAgent;
-
+let reviewer = ReviewerAgent;
 let task = Task {
     description: mission.goal.clone(),
 };
@@ -78,6 +79,22 @@ while let Some(task) = queue.next() {
         &task,
         &context,
     ).await;
+    reviewer.execute(&task).await;
+}
+let summary = format!(
+    "Mission completed: {}",
+    mission.goal
+);
+
+match MemoryStore::save(&summary) {
+
+    Ok(_) => {
+        println!("🧠 Mission stored in memory.");
+    }
+
+    Err(error) => {
+        println!("❌ Memory save failed: {}", error);
+    }
 }
     }
 } 
