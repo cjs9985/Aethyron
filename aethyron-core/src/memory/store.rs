@@ -1,4 +1,4 @@
-use std::fs::OpenOptions;
+use std::fs::{OpenOptions, read_to_string};
 use std::io::Write;
 
 use anyhow::Result;
@@ -9,6 +9,9 @@ pub struct MemoryStore;
 
 impl MemoryStore {
 
+    const FILE: &'static str = "aethyron_memory.txt";
+
+
     pub fn save(
         content: &str,
     ) -> Result<()> {
@@ -17,7 +20,7 @@ impl MemoryStore {
             OpenOptions::new()
                 .create(true)
                 .append(true)
-                .open("aethyron_memory.txt")?;
+                .open(Self::FILE)?;
 
 
         writeln!(
@@ -28,5 +31,27 @@ impl MemoryStore {
 
 
         Ok(())
+    }
+
+
+    pub fn load() -> Result<String> {
+
+        match read_to_string(Self::FILE) {
+
+            Ok(memory) => Ok(memory),
+
+            Err(error) => {
+
+                if error.kind()
+                    == std::io::ErrorKind::NotFound
+                {
+                    Ok(String::new())
+                }
+
+                else {
+                    Err(error.into())
+                }
+            }
+        }
     }
 }

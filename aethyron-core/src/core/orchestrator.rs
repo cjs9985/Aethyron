@@ -61,7 +61,9 @@ let task = Task {
 
 println!("🧭 Creating mission plan...");
 
-if let Some(plan) = planner.create_plan(&task).await {
+if let Some(plan) = planner.create_plan_with_context(&task, 
+Some(&context),
+).await {
 
    let mut queue = crate::core::task_queue::TaskQueue::new();
 

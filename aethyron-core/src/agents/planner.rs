@@ -7,7 +7,9 @@ use crate::models::{
     ollama::OllamaClient,
     tool_request::ToolRequest,
     plan::Plan,
+    project_context::ProjectContext,
 };
+
 
 pub struct PlannerAgent;
 
@@ -19,7 +21,27 @@ impl PlannerAgent {
         task: &Task,
     ) -> Option<Plan> {
 
+        self.create_plan_with_context(
+            task,
+            None,
+        ).await
+    }
+
+
+    pub async fn create_plan_with_context(
+        &self,
+        task: &Task,
+        context: Option<&ProjectContext>,
+    ) -> Option<Plan> {
+
         let client = OllamaClient::new();
+
+
+        let memory = match context {
+            Some(ctx) => &ctx.memory,
+            None => "",
+        };
+
 
         let prompt = format!(
 r#"
@@ -28,6 +50,11 @@ You are the planning intelligence of Aethyron.
 Convert the mission into executable engineering tasks.
 
 Mission:
+
+{}
+
+Previous project memory:
+
 {}
 
 Return ONLY valid JSON.
@@ -45,7 +72,8 @@ Format:
 Do not include markdown.
 Do not include explanations.
 "#,
-            task.description
+            task.description,
+            memory
         );
 
 
@@ -97,6 +125,7 @@ Do not include explanations.
 }
 
 
+
 #[async_trait]
 impl Agent for PlannerAgent {
 
@@ -117,7 +146,8 @@ impl Agent for PlannerAgent {
         );
 
 
-        let tool_request = ToolRequest::InspectProject;
+        let tool_request =
+            ToolRequest::InspectProject;
 
 
         println!(
