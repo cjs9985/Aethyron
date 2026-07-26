@@ -30,7 +30,7 @@ impl Agent for CoderAgent {
         println!("💻 {} received task:", self.name());
         println!("{}", task.description);
 
-        None
+        Some(ToolRequest::InspectProject)
     }
 }
 

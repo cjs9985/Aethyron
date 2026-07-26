@@ -3,6 +3,7 @@ use crate::memory::store::MemoryStore;
 use crate::agents::{
     coder::CoderAgent,
     Task,
+    Agent,
     planner::PlannerAgent,
     reviewer::ReviewerAgent,
 };
@@ -11,7 +12,9 @@ use crate::core::{
     events::{Event, EventType},
     context_builder::ContextBuilder,
 };
-use crate::models::mission_result::MissionResult;
+use crate::models::{ mission_result::MissionResult,
+};
+use crate::tools::dispatcher::ToolDispatcher;
 
 #[derive(Debug)]
 pub struct Mission {
@@ -76,12 +79,24 @@ for description in plan.tasks {
 }
 
 let mut review_notes = Vec::new();
+
 while let Some(task) = queue.next() {
+
+    if let Some(request) = coder.execute(&task).await {
+
+        if let Err(error) = ToolDispatcher::execute(request) {
+            println!(
+                "❌ Tool execution failed: {}",
+                error
+            );
+        }
+    }
 
     let changed_files = coder.execute_with_context(
         &task,
         &context,
     ).await;
+
     files_changed.extend(changed_files);
     let review = reviewer.review(&task).await;
     review_notes.push(review.notes);

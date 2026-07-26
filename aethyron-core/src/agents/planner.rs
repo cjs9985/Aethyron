@@ -116,7 +116,7 @@ impl Agent for PlannerAgent {
 
     async fn execute(
         &self,
-        task: &Task,
+        _task: &Task,
     ) -> Option<ToolRequest> {
 
         println!(
@@ -131,8 +131,7 @@ impl Agent for PlannerAgent {
             tool_request
         );
 
-        let _ = self.create_plan(task).await;
-
         Some(tool_request)
     }
+
 }

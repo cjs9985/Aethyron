@@ -17,21 +17,15 @@ impl CodeGenerator {
 
         let prompt = format!(
 r#"You are a senior Rust engineer.
-
 Task:
-
 {}
-
 Return EXACTLY in this format.
-
 PATH: src/example.rs
-
 -----BEGIN CODE-----
 Rust source code only
 -----END CODE-----
 
 Rules:
-
 - No markdown.
 - No JSON.
 - No explanations.
@@ -54,25 +48,16 @@ Rules:
 
         let prompt = format!(
 r#"You generated Rust code that failed to compile.
-
 Compiler output:
-
 {}
-
 Previous code:
-
 {}
-
 Return EXACTLY in this format.
-
 PATH: same file
-
 -----BEGIN CODE-----
 Corrected Rust source code
 -----END CODE-----
-
 Rules:
-
 - No markdown.
 - No JSON.
 - No explanations.
@@ -115,11 +100,11 @@ Rules:
                 .trim()
                 .to_string();
 
-        let content =
-            response
-                [begin_start + begin.len()..end_start]
-                .trim()
-                .to_string();
+        let content = response
+        .get(begin_start + begin.len()..end_start)
+        .ok_or_else(|| anyhow!("Invalid code boundaries"))?
+        .trim()
+        .to_string();
 
         if path.is_empty() {
             return Err(anyhow!("Generated file path is empty"));

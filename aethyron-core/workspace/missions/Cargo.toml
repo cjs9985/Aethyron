@@ -1,4 +1,4 @@
 [dependencies]
-bcrypt = "0.14.0"
-# Alternatively, for Argon2
-# argon2 = "0.5.3"
+bcrypt = "0.9"
+# OR
+argon2 = { version = "1.3", features = ["default"] }
