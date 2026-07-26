@@ -84,8 +84,12 @@ Do not include explanations.
                 println!("\n📜 Planner Response:\n");
                 println!("{}", response);
 
-
-                match serde_json::from_str::<Plan>(&response) {
+                let cleaned = response
+                .replace("```json", "")
+                .replace("```", "")
+                .trim()
+                .to_string();
+                match serde_json::from_str::<Plan>(&cleaned) {
 
                     Ok(plan) => {
 

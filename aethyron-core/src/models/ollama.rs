@@ -63,6 +63,9 @@ impl OllamaClient {
             .await?;
 
           println!("📡 Response received from Ollama");
+          println!("================ MODEL RESPONSE ================");
+          println!("{}", response.response);
+          println!("================================================");
         Ok(response.response)
 
     }
