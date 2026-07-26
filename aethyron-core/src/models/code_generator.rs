@@ -1,23 +1,14 @@
-use anyhow::Result;
-use serde::Deserialize;
-use serde_json;
-use serde_json::Value;
-use crate::models::
-     {ollama::OllamaClient,
-      code_change::CodeChange,
-      fix_request::FixRequest,
+use anyhow::{anyhow, Result};
+
+use crate::models::{
+    code_change::CodeChange,
+    fix_request::FixRequest,
+    ollama::OllamaClient,
 };
 
-
-#[derive(Deserialize)]
-struct GeneratedFile {
-    path: String,
-    content: String,
-}
 pub struct CodeGenerator;
 
 impl CodeGenerator {
-
     pub async fn generate(
         instruction: &str,
     ) -> Result<CodeChange> {
@@ -31,47 +22,37 @@ Task:
 
 {}
 
-Return JSON only:
+Return EXACTLY in this format.
 
-{{
-  "path": "src/example.rs",
-  "content": "rust code here"
-}}
+PATH: src/example.rs
 
-Do not include markdown.
+-----BEGIN CODE-----
+Rust source code only
+-----END CODE-----
+
+Rules:
+
+- No markdown.
+- No JSON.
+- No explanations.
+- No comments before or after.
 "#,
             instruction
         );
 
-
         let response =
             client.generate(&prompt).await?;
 
-        let cleaned = response
-        .replace("```json", "")
-        .replace("```", "")
-        .trim()
-        .to_string();
-
-        let json = Self::repair_json(&response);
-
-        let repaired = Self::repair_json(&json);
-
-        let file: GeneratedFile =
-        serde_json::from_str(&json)?;
-
-        Ok(CodeChange {
-            path: file.path,
-            content: file.content,
-        })
+        Self::parse_generated_file(&response)
     }
+
     pub async fn fix(
-    request: &FixRequest,
-) -> Result<CodeChange> {
+        request: &FixRequest,
+    ) -> Result<CodeChange> {
 
-    let client = OllamaClient::new();
+        let client = OllamaClient::new();
 
-    let prompt = format!(
+        let prompt = format!(
 r#"You generated Rust code that failed to compile.
 
 Compiler output:
@@ -82,54 +63,75 @@ Previous code:
 
 {}
 
-Return JSON only:
+Return EXACTLY in this format.
 
-{{
-  "path": "same file",
-  "content": "corrected rust code"
-}}
+PATH: same file
 
-Do not include markdown."#,
-        request.compiler_output,
-        request.previous_code,
-    );
+-----BEGIN CODE-----
+Corrected Rust source code
+-----END CODE-----
 
-    let response = client.generate(&prompt).await?;
+Rules:
 
-    let json = Self::repair_json(&response);
-    
-    let repaired = Self::repair_json(&response);
-    let file: GeneratedFile =
-        serde_json::from_str(&repaired)?;
+- No markdown.
+- No JSON.
+- No explanations.
+"#,
+            request.compiler_output,
+            request.previous_code,
+        );
 
-    Ok(CodeChange {
-        path: file.path,
-        content: file.content,
-    })
-}
-fn extract_json(response: &str) -> String {
+        let response =
+            client.generate(&prompt).await?;
 
-    let cleaned = response
-        .replace("```json", "")
-        .replace("```rust", "")
-        .replace("```", "")
-        .trim()
-        .to_string();
+        Self::parse_generated_file(&response)
+    }
 
-    if let Some(start) = cleaned.find('{') {
-        if let Some(end) = cleaned.rfind('}') {
-            return cleaned[start..=end].to_string();
+    fn parse_generated_file(
+        response: &str,
+    ) -> Result<CodeChange> {
+
+        let path_prefix = "PATH:";
+        let begin = "-----BEGIN CODE-----";
+        let end = "-----END CODE-----";
+
+        let path_start =
+            response
+                .find(path_prefix)
+                .ok_or_else(|| anyhow!("Missing PATH"))?;
+
+        let begin_start =
+            response
+                .find(begin)
+                .ok_or_else(|| anyhow!("Missing BEGIN CODE marker"))?;
+
+        let end_start =
+            response
+                .find(end)
+                .ok_or_else(|| anyhow!("Missing END CODE marker"))?;
+
+        let path =
+            response[path_start + path_prefix.len()..begin_start]
+                .trim()
+                .to_string();
+
+        let content =
+            response
+                [begin_start + begin.len()..end_start]
+                .trim()
+                .to_string();
+
+        if path.is_empty() {
+            return Err(anyhow!("Generated file path is empty"));
         }
-    }
 
-    cleaned
-}
-fn repair_json(json: &str) -> String {
-    if let Ok(_) = serde_json::from_str::<Value>(json) {
-        return json.to_string();
-    }
+        if content.is_empty() {
+            return Err(anyhow!("Generated file content is empty"));
+        }
 
-    json.replace("\"content\": \"\n", "\"content\": \"\\n")
-        .replace("\n\"\n}", "\\n\"\n}")
-}
+        Ok(CodeChange {
+            path,
+            content,
+        })
+    }
 }

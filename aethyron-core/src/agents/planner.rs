@@ -5,17 +5,14 @@ use super::{Agent, Task};
 
 use crate::models::{
     ollama::OllamaClient,
-    tool_request::ToolRequest,
     plan::Plan,
     project_context::ProjectContext,
+    tool_request::ToolRequest,
 };
-
 
 pub struct PlannerAgent;
 
-
 impl PlannerAgent {
-
     pub async fn create_plan(
         &self,
         task: &Task,
@@ -24,9 +21,9 @@ impl PlannerAgent {
         self.create_plan_with_context(
             task,
             None,
-        ).await
+        )
+        .await
     }
-
 
     pub async fn create_plan_with_context(
         &self,
@@ -36,16 +33,12 @@ impl PlannerAgent {
 
         let client = OllamaClient::new();
 
-
-        let memory = match context {
-            Some(ctx) => &ctx.memory,
-            None => "",
-        };
-
+        let memory = context
+            .map(|ctx| ctx.memory.as_str())
+            .unwrap_or("");
 
         let prompt = format!(
-r#"
-You are the planning intelligence of Aethyron.
+r#"You are the planning intelligence of Aethyron.
 
 Convert the mission into executable engineering tasks.
 
@@ -57,9 +50,7 @@ Previous project memory:
 
 {}
 
-Return ONLY valid JSON.
-
-Format:
+Return ONLY valid JSON in this format:
 
 {{
   "tasks": [
@@ -69,56 +60,44 @@ Format:
   ]
 }}
 
-Do not include markdown.
-Do not include explanations.
+Rules:
+
+- No markdown.
+- No explanations.
+- No extra text.
 "#,
             task.description,
             memory
         );
 
+        let response = match client.generate(&prompt).await {
+            Ok(response) => response,
 
-        match client.generate(&prompt).await {
-
-            Ok(response) => {
-
-                println!("\n📜 Planner Response:\n");
-                println!("{}", response);
-
-                let cleaned = response
-                .replace("```json", "")
-                .replace("```", "")
-                .trim()
-                .to_string();
-                match serde_json::from_str::<Plan>(&cleaned) {
-
-                    Ok(plan) => {
-
-                        println!(
-                            "✅ Plan created with {} tasks.",
-                            plan.tasks.len()
-                        );
-
-                        Some(plan)
-                    }
-
-
-                    Err(error) => {
-
-                        println!(
-                            "❌ Failed to parse plan JSON: {}",
-                            error
-                        );
-
-                        None
-                    }
-                }
+            Err(error) => {
+                println!("❌ Planner model error: {}", error);
+                return None;
             }
+        };
 
+        println!("\n📜 Planner Response:\n");
+        println!("{}", response);
+
+        match serde_json::from_str::<Plan>(&response) {
+
+            Ok(plan) => {
+
+                println!(
+                    "✅ Plan created with {} tasks.",
+                    plan.tasks.len()
+                );
+
+                Some(plan)
+            }
 
             Err(error) => {
 
                 println!(
-                    "❌ Planner model error: {}",
+                    "❌ Failed to parse planner response: {}",
                     error
                 );
 
@@ -128,8 +107,6 @@ Do not include explanations.
     }
 }
 
-
-
 #[async_trait]
 impl Agent for PlannerAgent {
 
@@ -137,31 +114,24 @@ impl Agent for PlannerAgent {
         "Planner Agent"
     }
 
-
     async fn execute(
         &self,
         task: &Task,
     ) -> Option<ToolRequest> {
-
 
         println!(
             "🧭 {} analyzing mission...",
             self.name()
         );
 
-
-        let tool_request =
-            ToolRequest::InspectProject;
-
+        let tool_request = ToolRequest::InspectProject;
 
         println!(
             "🧭 Planner requested tool: {:?}",
             tool_request
         );
 
-
         let _ = self.create_plan(task).await;
-
 
         Some(tool_request)
     }

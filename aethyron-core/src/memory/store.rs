@@ -69,4 +69,28 @@ impl MemoryStore {
             }
         }
     }
+    pub fn load_recent(limit: usize) -> Result<String> {
+
+    let memory = Self::load()?;
+
+    if memory.is_empty() {
+        return Ok(String::new());
+    }
+
+    let lines: Vec<&str> = memory
+        .lines()
+        .collect();
+
+    let recent = lines
+        .iter()
+        .rev()
+        .take(limit)
+        .rev()
+        .cloned()
+        .collect::<Vec<&str>>();
+
+    Ok(
+        recent.join("\n")
+    )
+}
 }
