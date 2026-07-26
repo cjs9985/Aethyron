@@ -2,8 +2,6 @@ use async_trait::async_trait;
 
 use super::{Agent, Task};
 
-use crate::core::repair_engine::RepairEngine;
-
 use crate::models::{
     code_generator::CodeGenerator,
     compiler::Compiler,
@@ -12,31 +10,40 @@ use crate::models::{
     tool_request::ToolRequest,
 };
 
+use crate::core::repair_engine::RepairEngine;
 use crate::tools::editor::EditorTool;
+
 
 pub struct CoderAgent;
 
+
 #[async_trait]
 impl Agent for CoderAgent {
+
     fn name(&self) -> &str {
         "Coder Agent"
     }
+
 
     async fn execute(
         &self,
         task: &Task,
     ) -> Option<ToolRequest> {
 
-        println!("💻 {} received task:", self.name());
+        println!(
+            "💻 {} received task:",
+            self.name()
+        );
+
         println!("{}", task.description);
 
         Some(ToolRequest::InspectProject)
     }
 }
 
-impl CoderAgent {
 
-    const MAX_RETRIES: usize = 3;
+
+impl CoderAgent {
 
     pub async fn execute_with_context(
         &self,
@@ -46,102 +53,185 @@ impl CoderAgent {
 
         let mut files_changed = Vec::new();
 
-        println!("💻 {} working on task:", self.name());
+
+        println!(
+            "💻 {} working on task:",
+            self.name()
+        );
+
         println!("{}", task.description);
 
+
+
+        // Safety guard:
+        // Aethyron modifies existing projects.
+        // It must not recreate itself.
+        if task.description
+            .to_lowercase()
+            .contains("initialize a new rust project")
+        {
+
+            println!(
+                "⚠️ Skipping unsafe initialization task."
+            );
+
+            return files_changed;
+        }
+
+
+
         println!("📦 Project Context");
-        println!("Cargo.toml: {} bytes", context.cargo_toml.len());
+
+        println!(
+            "Cargo.toml: {} bytes",
+            context.cargo_toml.len()
+        );
+
 
         for file in &context.files {
             println!("  {}", file);
         }
 
+
+
+        const MAX_RETRIES: usize = 3;
+
         let mut attempts = 0;
+
+
 
         loop {
 
             attempts += 1;
 
+
             println!(
                 "🧠 Generating code (attempt {}/{})...",
                 attempts,
-                Self::MAX_RETRIES
+                MAX_RETRIES
             );
 
-            let change = match CodeGenerator::generate(
-                &task.description,
+
+
+            let change =
+                match CodeGenerator::generate(
+                    &task.description
+                ).await
+                {
+
+                    Ok(change) => change,
+
+
+                    Err(error) => {
+
+                        println!(
+                            "❌ Code generation failed: {}",
+                            error
+                        );
+
+
+                        if attempts >= MAX_RETRIES {
+                            break;
+                        }
+
+
+                        continue;
+                    }
+                };
+
+
+
+            let previous_code =
+                change.content.clone();
+
+
+
+            let operation = FileOperation {
+
+                path: change.path,
+
+                content: change.content,
+            };
+
+
+
+            println!(
+                "📝 Writing {}",
+                operation.path
+            );
+
+
+
+            match EditorTool::write(
+                &operation.path,
+                &operation.content,
             )
-            .await
             {
-                Ok(change) => change,
+
+                Ok(_) => {
+
+                    println!(
+                        "✅ Generated {}",
+                        operation.path
+                    );
+
+
+                    files_changed.push(
+                        operation.path.clone()
+                    );
+                }
+
+
 
                 Err(error) => {
 
                     println!(
-                        "❌ Code generation failed: {}",
+                        "❌ Write error: {}",
                         error
                     );
 
-                    if attempts >= Self::MAX_RETRIES {
-                        return files_changed;
-                    }
-
-                    continue;
+                    break;
                 }
-            };
-
-            let previous_code = change.content.clone();
-
-            let operation = FileOperation {
-                path: change.path,
-                content: change.content,
-            };
-
-            println!("📝 Writing {}", operation.path);
-
-            if let Err(error) = EditorTool::write(
-                &operation.path,
-                &operation.content,
-            ) {
-
-                println!("❌ Write error: {}", error);
-                return files_changed;
             }
 
-            files_changed.push(operation.path.clone());
 
-            println!("⚙ Running cargo check...");
 
-            match Compiler::check() {
+            println!(
+                "⚙ Running cargo check..."
+            );
+
+
+
+            match Compiler::check()
+            {
 
                 Ok(report) => {
 
                     println!("{}", report);
 
-                    println!(
-                        "✅ Task completed successfully."
-                    );
-
-                    return files_changed;
+                    break;
                 }
+
+
 
                 Err(error) => {
 
                     println!(
-                        "❌ Cargo check failed:\n{}",
+                        "❌ Cargo error: {}",
                         error
                     );
 
-                    if attempts >= Self::MAX_RETRIES {
+
+                    if attempts >= MAX_RETRIES {
 
                         println!(
                             "❌ Maximum repair attempts reached."
                         );
 
-                        return files_changed;
+                        break;
                     }
 
-                    println!("🔧 Attempting automatic repair...");
+
 
                     match RepairEngine::repair(
                         error.to_string(),
@@ -153,24 +243,28 @@ impl CoderAgent {
                         Ok(_) => {
 
                             println!(
-                                "🔄 Repair complete. Retrying..."
+                                "🔄 Repair completed. Retrying..."
                             );
 
-                            continue;
                         }
 
-                        Err(error) => {
+
+
+                        Err(repair_error) => {
 
                             println!(
                                 "❌ Repair failed: {}",
-                                error
+                                repair_error
                             );
 
-                            return files_changed;
+                            break;
                         }
                     }
                 }
             }
         }
+
+
+        files_changed
     }
 }

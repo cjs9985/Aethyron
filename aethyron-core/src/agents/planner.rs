@@ -42,6 +42,12 @@ r#"You are the planning intelligence of Aethyron.
 
 Convert the mission into executable engineering tasks.
 
+Important:
+- This is an existing Rust project.
+- Never recreate the project.
+- Never initialize Cargo again.
+- Modify existing files only.
+- Inspect current structure before creating files.
 Mission:
 
 {}

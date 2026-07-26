@@ -6,9 +6,12 @@ use crate::models::{
     ollama::OllamaClient,
 };
 
+
 pub struct CodeGenerator;
 
+
 impl CodeGenerator {
+
     pub async fn generate(
         instruction: &str,
     ) -> Result<CodeChange> {
@@ -16,29 +19,46 @@ impl CodeGenerator {
         let client = OllamaClient::new();
 
         let prompt = format!(
-r#"You are a senior Rust engineer.
+r#"
+You are the coding agent inside Aethyron.
+
 Task:
 {}
-Return EXACTLY in this format.
-PATH: src/example.rs
+
+You are modifying an EXISTING Rust project.
+
+Requirements:
+
+1. Inspect existing structure mentally.
+2. Do not create unrelated examples.
+3. Do not create main functions unless requested.
+4. Return ONLY a file modification.
+
+Required format:
+
+PATH: relative/path/file.rs
 -----BEGIN CODE-----
-Rust source code only
+Rust code only
 -----END CODE-----
 
 Rules:
 - No markdown.
-- No JSON.
+- No ```rust fences.
 - No explanations.
-- No comments before or after.
+- No comments outside code.
 "#,
             instruction
         );
 
+
         let response =
             client.generate(&prompt).await?;
 
+
         Self::parse_generated_file(&response)
     }
+
+
 
     pub async fn fix(
         request: &FixRequest,
@@ -46,73 +66,120 @@ Rules:
 
         let client = OllamaClient::new();
 
+
         let prompt = format!(
-r#"You generated Rust code that failed to compile.
-Compiler output:
+r#"
+You are repairing Rust code.
+
+Compiler error:
+
 {}
+
 Previous code:
+
 {}
-Return EXACTLY in this format.
-PATH: same file
+
+Return only the corrected file.
+
+Format:
+
+PATH: relative/path/file.rs
 -----BEGIN CODE-----
-Corrected Rust source code
+Rust code only
 -----END CODE-----
+
 Rules:
 - No markdown.
-- No JSON.
 - No explanations.
 "#,
             request.compiler_output,
-            request.previous_code,
+            request.previous_code
         );
+
 
         let response =
             client.generate(&prompt).await?;
 
+
         Self::parse_generated_file(&response)
     }
+
+
 
     fn parse_generated_file(
         response: &str,
     ) -> Result<CodeChange> {
 
-        let path_prefix = "PATH:";
-        let begin = "-----BEGIN CODE-----";
-        let end = "-----END CODE-----";
+
+        let cleaned = response
+            .replace("```rust", "")
+            .replace("```", "")
+            .trim()
+            .to_string();
+
+
+        let path_marker = "PATH:";
+        let begin_marker = "-----BEGIN CODE-----";
+        let end_marker = "-----END CODE-----";
+
 
         let path_start =
-            response
-                .find(path_prefix)
+            cleaned
+                .find(path_marker)
                 .ok_or_else(|| anyhow!("Missing PATH"))?;
 
+
         let begin_start =
-            response
-                .find(begin)
+            cleaned
+                .find(begin_marker)
                 .ok_or_else(|| anyhow!("Missing BEGIN CODE marker"))?;
 
+
         let end_start =
-            response
-                .find(end)
+            cleaned
+                .find(end_marker)
                 .ok_or_else(|| anyhow!("Missing END CODE marker"))?;
 
+
+
         let path =
-            response[path_start + path_prefix.len()..begin_start]
+            cleaned
+                [
+                    path_start + path_marker.len()
+                    ..
+                    begin_start
+                ]
                 .trim()
                 .to_string();
 
-        let content = response
-        .get(begin_start + begin.len()..end_start)
-        .ok_or_else(|| anyhow!("Invalid code boundaries"))?
-        .trim()
-        .to_string();
+
+
+        let content =
+            cleaned
+                [
+                    begin_start + begin_marker.len()
+                    ..
+                    end_start
+                ]
+                .trim()
+                .to_string();
+
+
 
         if path.is_empty() {
-            return Err(anyhow!("Generated file path is empty"));
+            return Err(anyhow!(
+                "Generated path empty"
+            ));
         }
 
+
         if content.is_empty() {
-            return Err(anyhow!("Generated file content is empty"));
+            return Err(anyhow!(
+                "Generated code empty"
+            ));
         }
+
+
 
         Ok(CodeChange {
             path,
