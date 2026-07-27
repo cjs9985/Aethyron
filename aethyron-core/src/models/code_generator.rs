@@ -14,43 +14,49 @@ impl CodeGenerator {
 
     pub async fn generate(
         instruction: &str,
+        project_index: &str,
     ) -> Result<CodeChange> {
 
         let client = OllamaClient::new();
 
         let prompt = format!(
-r#"
-You are the coding agent inside Aethyron.
+r#"You are the senior Rust engineer responsible for maintaining an existing project.
 
-Task:
+Project Index:
+
 {}
 
-You are modifying an EXISTING Rust project.
+Task:
+
+{}
 
 Requirements:
 
-1. Inspect existing structure mentally.
-2. Do not create unrelated examples.
-3. Do not create main functions unless requested.
-4. Return ONLY a file modification.
+- Modify the EXISTING project.
+- Reuse existing modules whenever possible.
+- Do NOT invent a new architecture.
+- Do NOT generate unrelated examples.
+- Only create new files when the task explicitly requires them.
+- Preserve existing coding style.
 
-Required format:
+Return EXACTLY in this format.
 
-PATH: relative/path/file.rs
+PATH: src/example.rs
 -----BEGIN CODE-----
-Rust code only
+Rust source code only
 -----END CODE-----
 
 Rules:
+
 - No markdown.
-- No ```rust fences.
+- No JSON.
 - No explanations.
-- No comments outside code.
+- No text before PATH.
+- No text after END CODE.
 "#,
-            instruction
-        );
-
-
+    project_index,
+    instruction,
+);
         let response =
             client.generate(&prompt).await?;
 

@@ -98,7 +98,8 @@ while let Some(task) = queue.next() {
     ).await;
 
     files_changed.extend(changed_files);
-    let review = reviewer.review(&task).await;
+    let review = reviewer.review(
+        &task, &context,).await;
     review_notes.push(review.notes);
 }
 let notes = review_notes.join("\n");

@@ -13,9 +13,7 @@ use crate::models::{
 use crate::core::repair_engine::RepairEngine;
 use crate::tools::editor::EditorTool;
 
-
 pub struct CoderAgent;
-
 
 #[async_trait]
 impl Agent for CoderAgent {
@@ -78,8 +76,6 @@ impl CoderAgent {
             return files_changed;
         }
 
-
-
         println!("📦 Project Context");
 
         println!(
@@ -87,41 +83,28 @@ impl CoderAgent {
             context.cargo_toml.len()
         );
 
-
         for file in &context.files {
             println!("  {}", file);
         }
-
-
 
         const MAX_RETRIES: usize = 3;
 
         let mut attempts = 0;
 
-
-
         loop {
-
             attempts += 1;
-
-
             println!(
                 "🧠 Generating code (attempt {}/{})...",
                 attempts,
                 MAX_RETRIES
             );
-
-
-
-            let change =
+        let change =
                 match CodeGenerator::generate(
-                    &task.description
+                    &task.description,
+                    &context.project_index,
                 ).await
                 {
-
                     Ok(change) => change,
-
-
                     Err(error) => {
 
                         println!(
@@ -139,13 +122,8 @@ impl CoderAgent {
                     }
                 };
 
-
-
             let previous_code =
                 change.content.clone();
-
-
-
             let operation = FileOperation {
 
                 path: change.path,
@@ -153,15 +131,10 @@ impl CoderAgent {
                 content: change.content,
             };
 
-
-
             println!(
                 "📝 Writing {}",
                 operation.path
             );
-
-
-
             match EditorTool::write(
                 &operation.path,
                 &operation.content,

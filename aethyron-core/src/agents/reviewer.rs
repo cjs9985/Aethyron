@@ -6,6 +6,7 @@ use crate::models::{
     ollama::OllamaClient,
     tool_request::ToolRequest,
     review_report::ReviewReport,
+    project_context::ProjectContext,
 };
 
 pub struct ReviewerAgent;
@@ -15,10 +16,12 @@ impl ReviewerAgent {
     pub async fn review(
         &self,
         task: &Task,
+        context: &ProjectContext,
     ) -> ReviewReport {
 
         let client = OllamaClient::new();
-
+        println!("Project files: {}",
+                  context.files.len());
         let prompt = format!(
 r#"
 You are a senior Rust code reviewer.
@@ -60,14 +63,10 @@ impl Agent for ReviewerAgent {
 
     async fn execute(
         &self,
-        task: &Task,
-    ) -> Option<ToolRequest> {
-
-        let report = self.review(task).await;
+        task: &Task,) -> Option<ToolRequest> {
 
         println!("🔍 Review:");
-        println!("{}", report.notes);
-
+        println!("{}", task.description);
         None
     }
 }
