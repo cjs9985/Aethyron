@@ -5,13 +5,8 @@ use crate::models::{
     fix_request::FixRequest,
     ollama::OllamaClient,
 };
-
-
 pub struct CodeGenerator;
-
-
 impl CodeGenerator {
-
     pub async fn generate(
         instruction: &str,
         project_index: &str,
@@ -45,14 +40,26 @@ PATH: src/example.rs
 -----BEGIN CODE-----
 Rust source code only
 -----END CODE-----
-
 Rules:
 
+Security requirements:
+- Never store plaintext passwords.
+- Never compare plaintext passwords.
+- Use bcrypt or Argon2 for password hashing.
+- Password fields must store only password hashes.
+- Authentication must verify hashes.
+
+Code requirements:
+- Reuse existing project structure.
+- Do not create duplicate modules.
+- Do not initialize new projects.
+- Use existing dependencies from Cargo.toml.
+
+Output requirements:
 - No markdown.
 - No JSON.
 - No explanations.
-- No text before PATH.
-- No text after END CODE.
+- No comments before or after.
 "#,
     project_index,
     instruction,

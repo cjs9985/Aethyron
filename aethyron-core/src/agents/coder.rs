@@ -42,202 +42,161 @@ impl Agent for CoderAgent {
 
 
 impl CoderAgent {
+     pub async fn execute_with_context(
+    &self,
+    task: &Task,
+    context: &ProjectContext,
+) -> Vec<String> {
 
-    pub async fn execute_with_context(
-        &self,
-        task: &Task,
-        context: &ProjectContext,
-    ) -> Vec<String> {
+    let mut files_changed = Vec::new();
 
-        let mut files_changed = Vec::new();
+    println!(
+        "💻 {} working on task:",
+        self.name()
+    );
 
+    println!("{}", task.description);
+
+    // Safety guard:
+    // Aethyron modifies existing projects.
+    // It must not recreate itself.
+    if task
+        .description
+        .to_lowercase()
+        .contains("initialize a new rust project")
+    {
+        println!("⚠️ Skipping unsafe initialization task.");
+        return files_changed;
+    }
+
+    println!("📦 Project Context");
+    println!(
+        "Cargo.toml: {} bytes",
+        context.cargo_toml.len()
+    );
+
+    for file in &context.files {
+        println!("  {}", file);
+    }
+     println!();
+     println!("📚 Project Index:");
+     println!("{}", context.project_index);
+     println!();
+     
+    const MAX_RETRIES: usize = 3;
+    let mut attempts = 0;
+
+    loop {
+
+        attempts += 1;
 
         println!(
-            "💻 {} working on task:",
-            self.name()
+            "🧠 Generating code (attempt {}/{})...",
+            attempts,
+            MAX_RETRIES
         );
 
-        println!("{}", task.description);
-
-
-
-        // Safety guard:
-        // Aethyron modifies existing projects.
-        // It must not recreate itself.
-        if task.description
-            .to_lowercase()
-            .contains("initialize a new rust project")
+        let change = match CodeGenerator::generate(
+            &task.description,
+            &context.project_index,
+        )
+        .await
         {
+            Ok(change) => change,
 
-            println!(
-                "⚠️ Skipping unsafe initialization task."
-            );
+            Err(error) => {
 
-            return files_changed;
+                println!(
+                    "❌ Code generation failed: {}",
+                    error
+                );
+
+                if attempts >= MAX_RETRIES {
+                    break;
+                }
+
+                continue;
+            }
+        };
+
+        let previous_code = change.content.clone();
+
+        let operation = FileOperation {
+            path: change.path,
+            content: change.content,
+        };
+
+        println!("📝 Writing {}", operation.path);
+
+        if let Err(error) = EditorTool::write(
+            &operation.path,
+            &operation.content,
+        ) {
+            println!("❌ Write error: {}", error);
+            break;
         }
 
-        println!("📦 Project Context");
+        println!("✅ Generated {}", operation.path);
 
-        println!(
-            "Cargo.toml: {} bytes",
-            context.cargo_toml.len()
-        );
+        files_changed.push(operation.path.clone());
 
-        for file in &context.files {
-            println!("  {}", file);
-        }
+        println!("⚙ Running cargo check...");
 
-        const MAX_RETRIES: usize = 3;
+        match Compiler::check() {
 
-        let mut attempts = 0;
+            Ok(report) => {
 
-        loop {
-            attempts += 1;
-            println!(
-                "🧠 Generating code (attempt {}/{})...",
-                attempts,
-                MAX_RETRIES
-            );
-        let change =
-                match CodeGenerator::generate(
-                    &task.description,
-                    &context.project_index,
-                ).await
+                println!("✅ {}", report);
+
+                break;
+            }
+
+            Err(error) => {
+
+                println!(
+                    "❌ Cargo error:\n{}",
+                    error
+                );
+
+                if attempts >= MAX_RETRIES {
+
+                    println!(
+                        "❌ Maximum repair attempts reached."
+                    );
+
+                    break;
+                }
+
+                match RepairEngine::repair(
+                    error.to_string(),
+                    previous_code.clone(),
+                )
+                .await
                 {
-                    Ok(change) => change,
-                    Err(error) => {
+
+                    Ok(_) => {
 
                         println!(
-                            "❌ Code generation failed: {}",
-                            error
+                            "🔄 Repair completed. Retrying..."
                         );
-
-
-                        if attempts >= MAX_RETRIES {
-                            break;
-                        }
-
 
                         continue;
                     }
-                };
 
-            let previous_code =
-                change.content.clone();
-            let operation = FileOperation {
-
-                path: change.path,
-
-                content: change.content,
-            };
-
-            println!(
-                "📝 Writing {}",
-                operation.path
-            );
-            match EditorTool::write(
-                &operation.path,
-                &operation.content,
-            )
-            {
-
-                Ok(_) => {
-
-                    println!(
-                        "✅ Generated {}",
-                        operation.path
-                    );
-
-
-                    files_changed.push(
-                        operation.path.clone()
-                    );
-                }
-
-
-
-                Err(error) => {
-
-                    println!(
-                        "❌ Write error: {}",
-                        error
-                    );
-
-                    break;
-                }
-            }
-
-
-
-            println!(
-                "⚙ Running cargo check..."
-            );
-
-
-
-            match Compiler::check()
-            {
-
-                Ok(report) => {
-
-                    println!("{}", report);
-
-                    break;
-                }
-
-
-
-                Err(error) => {
-
-                    println!(
-                        "❌ Cargo error: {}",
-                        error
-                    );
-
-
-                    if attempts >= MAX_RETRIES {
+                    Err(repair_error) => {
 
                         println!(
-                            "❌ Maximum repair attempts reached."
+                            "❌ Repair failed: {}",
+                            repair_error
                         );
 
                         break;
                     }
-
-
-
-                    match RepairEngine::repair(
-                        error.to_string(),
-                        previous_code,
-                    )
-                    .await
-                    {
-
-                        Ok(_) => {
-
-                            println!(
-                                "🔄 Repair completed. Retrying..."
-                            );
-
-                        }
-
-
-
-                        Err(repair_error) => {
-
-                            println!(
-                                "❌ Repair failed: {}",
-                                repair_error
-                            );
-
-                            break;
-                        }
-                    }
                 }
             }
         }
-
-
-        files_changed
     }
+
+    files_changed
+}
 }

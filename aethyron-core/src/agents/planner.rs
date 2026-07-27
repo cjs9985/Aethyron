@@ -32,10 +32,14 @@ impl PlannerAgent {
     ) -> Option<Plan> {
 
         let client = OllamaClient::new();
-
         let memory = context
-            .map(|ctx| ctx.memory.as_str())
-            .unwrap_or("");
+           .map(|ctx| ctx.memory.as_str())
+           .unwrap_or("");
+
+        let project_index = context
+           .map(|ctx| ctx.project_index.as_str())
+           .unwrap_or("");
+        
 
         let prompt = format!(
 r#"You are the planning intelligence of Aethyron.
@@ -56,24 +60,35 @@ Previous project memory:
 
 {}
 
-Return ONLY valid JSON in this format:
+Existing project structure:
 
-{{
-  "tasks": [
-    "task one",
-    "task two",
-    "task three"
-  ]
-}}
+{}
+
+Analyze the existing project before creating tasks.
 
 Rules:
 
-- No markdown.
-- No explanations.
-- No extra text.
-"#,
+- Reuse existing files when possible.
+- Do not initialize a new project.
+- Do not create duplicate modules.
+- Reference existing files in tasks when possible.
+- Tasks must describe concrete engineering changes.
+
+Return ONLY valid JSON in this format:
+  {{
+     "tasks": [
+        "task one",
+        "task two",
+        "task three"
+     ]
+  }}
+     No markdown.
+     No explanations.
+     No extra text.
+     "#,
             task.description,
-            memory
+            memory,
+            project_index
         );
 
         let response = match client.generate(&prompt).await {
