@@ -52,7 +52,8 @@ impl Orchestrator {
         let context = ContextBuilder::build().unwrap();
 
        println!("📦 Context Built");
-       println!("Cargo.toml size: {}", context.cargo_toml.len());println!("Files discovered: {}", context.files.len());
+       println!("Cargo.toml size: {}", context.cargo_toml.len());
+       println!("Files discovered: {}", context.files.len());
 
 let planner = PlannerAgent;
 let coder = CoderAgent;
@@ -92,15 +93,19 @@ while let Some(task) = queue.next() {
         }
     }
 
-    let changed_files = coder.execute_with_context(
+    let coder_result = coder.execute_with_context(
         &task,
         &context,
     ).await;
 
-    files_changed.extend(changed_files);
+    files_changed.extend(coder_result.files_changed.clone());
+
     let review = reviewer.review(
-        &task, &context,).await;
-    review_notes.push(review.notes);
+    &task,
+    &coder_result.generated_code,
+).await;
+
+review_notes.push(review.feedback);
 }
 let notes = review_notes.join("\n");
 let result = MissionResult {

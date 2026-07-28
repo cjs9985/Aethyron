@@ -8,6 +8,7 @@ use crate::models::{
     file_operation::FileOperation,
     project_context::ProjectContext,
     tool_request::ToolRequest,
+    coder_result::CoderResult,
 };
 
 use crate::core::repair_engine::RepairEngine;
@@ -21,8 +22,6 @@ impl Agent for CoderAgent {
     fn name(&self) -> &str {
         "Coder Agent"
     }
-
-
     async fn execute(
         &self,
         task: &Task,
@@ -38,15 +37,12 @@ impl Agent for CoderAgent {
         Some(ToolRequest::InspectProject)
     }
 }
-
-
-
 impl CoderAgent {
      pub async fn execute_with_context(
     &self,
     task: &Task,
     context: &ProjectContext,
-) -> Vec<String> {
+) -> CoderResult {
 
     let mut files_changed = Vec::new();
 
@@ -66,7 +62,10 @@ impl CoderAgent {
         .contains("initialize a new rust project")
     {
         println!("⚠️ Skipping unsafe initialization task.");
-        return files_changed;
+        return CoderResult {
+            files_changed,
+            generated_code: String::new(),
+        };
     }
 
     println!("📦 Project Context");
@@ -84,6 +83,7 @@ impl CoderAgent {
      println!();
      
     const MAX_RETRIES: usize = 3;
+    let mut generated_code = String::new();
     let mut attempts = 0;
 
     loop {
@@ -118,12 +118,14 @@ impl CoderAgent {
                 continue;
             }
         };
+        
+        generated_code = change.content.clone();
 
-        let previous_code = change.content.clone();
+        let previous_code = generated_code.clone();
 
         let operation = FileOperation {
             path: change.path,
-            content: change.content,
+            content: generated_code.clone(),
         };
 
         println!("📝 Writing {}", operation.path);
@@ -197,6 +199,9 @@ impl CoderAgent {
         }
     }
 
-    files_changed
+    CoderResult {
+        files_changed,
+        generated_code,
+    }
 }
 }

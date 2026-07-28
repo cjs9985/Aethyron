@@ -10,3 +10,4 @@ pub mod fix_request;
 pub mod plan;
 pub mod mission_result;
 pub mod review_report;
+pub mod coder_result;

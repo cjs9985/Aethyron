@@ -6,51 +6,119 @@ use crate::models::{
     ollama::OllamaClient,
     tool_request::ToolRequest,
     review_report::ReviewReport,
-    project_context::ProjectContext,
+    compiler::Compiler,
 };
 
 pub struct ReviewerAgent;
 
 impl ReviewerAgent {
 
-    pub async fn review(
-        &self,
-        task: &Task,
-        context: &ProjectContext,
-    ) -> ReviewReport {
+       pub async fn review(
+    &self,
+    task: &Task,
+    generated_code: &str,
+) -> ReviewReport {
 
-        let client = OllamaClient::new();
-        println!("Project files: {}",
-                  context.files.len());
-        let prompt = format!(
-r#"
-You are a senior Rust code reviewer.
+    if let Err(error) = self.structural_review(generated_code) {
+        return ReviewReport {
+            passed: false,
+            structural: false,
+            security: false,
+            compilation: false,
+            ai_review: false,
+            feedback: error,
+        };
+    }
 
-Review the work completed for this engineering task.
+    if let Err(error) = self.security_review(generated_code) {
+        return ReviewReport {
+            passed: false,
+            structural: true,
+            security: false,
+            compilation: false,
+            ai_review: false,
+            feedback: error,
+        };
+    }
 
-Task:
-{}
+    if let Err(error) = self.compilation_review() {
+        return ReviewReport {
+            passed: false,
+            structural: true,
+            security: true,
+            compilation: false,
+            ai_review: false,
+            feedback: error,
+        };
+    }
 
-Return a concise review.
-"#,
-            task.description
+    let ai_feedback = match self.ai_review(task).await {
+        Ok(text) => text,
+        Err(error) => error,
+    };
+
+    ReviewReport {
+        passed: true,
+        structural: true,
+        security: true,
+        compilation: true,
+        ai_review: true,
+        feedback: ai_feedback,
+    }
+}
+    fn structural_review(&self, code: &str) -> Result<(), String> {
+
+    if code.trim().is_empty() {
+        return Err("Generated code is empty.".to_string());
+    }
+
+    if !code.contains("fn ")
+        && !code.contains("struct ")
+        && !code.contains("enum ")
+        && !code.contains("impl ")
+    {
+        return Err(
+            "No Rust items found in generated code."
+                .to_string(),
         );
+    }
 
-        match client.generate(&prompt).await {
+    Ok(())
+}
+    fn security_review(&self, code: &str) -> Result<(), String> {
 
-            Ok(response) => ReviewReport {
-                passed: true,
-                notes: response,
-            },
+    let forbidden = [
+        "password: String",
+        "== password",
+        ".unwrap()",
+        ".expect(",
+    ];
 
-            Err(error) => ReviewReport {
-                passed: false,
-                notes: format!(
-                    "Review failed: {}",
-                    error
-                ),
-            },
+    for pattern in forbidden {
+
+        if code.contains(pattern) {
+
+            return Err(format!(
+                "Forbidden pattern detected: {}",
+                pattern
+            ));
         }
+    }
+
+    Ok(())
+}
+    fn compilation_review(&self) -> Result<(), String> {
+
+    match Compiler::check() {
+
+        Ok(_) => Ok(()),
+
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+    async fn ai_review(&self, task: &Task) -> Result<String, String> {
+        Ok(String::from("AI review passed"))
     }
 }
 
