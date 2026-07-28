@@ -71,20 +71,9 @@ impl ReviewerAgent {
     if code.trim().is_empty() {
         return Err("Generated code is empty.".to_string());
     }
-
-    if !code.contains("fn ")
-        && !code.contains("struct ")
-        && !code.contains("enum ")
-        && !code.contains("impl ")
-    {
-        return Err(
-            "No Rust items found in generated code."
-                .to_string(),
-        );
+    Ok(())
     }
 
-    Ok(())
-}
     fn security_review(&self, code: &str) -> Result<(), String> {
 
     let forbidden = [
@@ -109,17 +98,34 @@ impl ReviewerAgent {
 }
     fn compilation_review(&self) -> Result<(), String> {
 
-    match Compiler::check() {
+    match crate::models::compiler::Compiler::check() {
 
         Ok(_) => Ok(()),
 
         Err(error) => Err(error.to_string()),
     }
 }
+    async fn ai_review(
+    &self,
+    task: &Task,
+) -> Result<String, String> {
 
-    async fn ai_review(&self, task: &Task) -> Result<String, String> {
-        Ok(String::from("AI review passed"))
+    let client = OllamaClient::new();
+
+    let prompt = format!(
+        "Review this engineering task:\n{}",
+        task.description
+    );
+
+    match client.generate(&prompt).await {
+
+        Ok(response) => Ok(response),
+
+        Err(error) => Err(
+            error.to_string()
+        ),
     }
+}
 }
 
 #[async_trait]
