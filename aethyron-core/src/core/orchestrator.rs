@@ -97,13 +97,80 @@ while let Some(task) = queue.next() {
         &task,
         &context,
     ).await;
+    let review = reviewer.review(
+    &task,
+    &coder_result.generated_code,
+).await;
+if !review.passed {
 
+    println!(
+        "⚠️ Review failed: {}",
+        review.feedback
+    );
+
+    let repair_result =
+        crate::core::repair_engine::RepairEngine::repair(
+            review.feedback.clone(),
+            coder_result.generated_code.clone(),
+        )
+        .await;
+
+    match repair_result {
+
+        Ok(_) => {
+            println!(
+                "🔄 Repair completed."
+            );
+        }
+
+        Err(error) => {
+            println!(
+                "❌ Repair failed: {}",
+                error
+            );
+        }
+    }
+}
     files_changed.extend(coder_result.files_changed.clone());
 
     let review = reviewer.review(
     &task,
     &coder_result.generated_code,
 ).await;
+
+
+if !review.passed {
+
+    println!(
+        "⚠️ Review failed: {}",
+        review.feedback
+    );
+
+    match crate::core::repair_engine::RepairEngine::repair(
+        review.feedback.clone(),
+        coder_result.generated_code.clone(),
+    )
+    .await
+    {
+
+        Ok(_) => {
+
+            println!(
+                "🔄 Repair completed. Retrying task..."
+            );
+
+        }
+
+        Err(error) => {
+
+            println!(
+                "❌ Repair failed: {}",
+                error
+            );
+        }
+    }
+}
+
 
 review_notes.push(review.feedback);
 }

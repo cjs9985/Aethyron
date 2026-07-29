@@ -6,7 +6,6 @@ use crate::models::{
     ollama::OllamaClient,
     tool_request::ToolRequest,
     review_report::ReviewReport,
-    compiler::Compiler,
 };
 
 pub struct ReviewerAgent;

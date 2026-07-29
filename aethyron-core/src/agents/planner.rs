@@ -24,6 +24,59 @@ impl PlannerAgent {
         )
         .await
     }
+    fn validate_plan(
+    &self,
+    plan: &mut Plan,
+    project_index: &str,
+) {
+    plan.tasks.retain(|task| {
+
+        let words = task.split_whitespace();
+
+        for word in words {
+
+            if word.starts_with("src/")
+                || word.starts_with("src\\")
+                || word.starts_with("tests/")
+                || word.starts_with("tests\\")
+            {
+                let path = word
+                    .trim_matches('`')
+                    .trim_matches(',')
+                    .trim_matches('.');
+
+                let exists =
+                    project_index
+                        .lines()
+                        .any(|line| line.trim() == path);
+
+                if !exists  {
+
+                    println!(
+                        "⚠ Removing invalid planner task:\n{}",
+                        task
+                    );
+
+                    return false;
+                }
+            }
+        }
+        let lower = task.to_lowercase();
+
+        if lower.contains("create a new project")
+    || lower.contains("initialize cargo")
+    || lower.contains("cargo new")
+{
+    println!(
+        "⚠ Planner proposed creating a new project. Rejecting task."
+    );
+
+    return false;
+    
+}
+        true
+    });
+}
 
     pub async fn create_plan_with_context(
         &self,
@@ -52,6 +105,19 @@ Important:
 - Never initialize Cargo again.
 - Modify existing files only.
 - Inspect current structure before creating files.
+Output format:
+Return ONLY valid JSON matching this structure:
+
+{{
+  "tasks": [
+    "Concrete Rust modification task"
+  ]
+        }}
+
+No markdown.
+No explanations.
+No tutorials.
+No code blocks.
 Mission:
 
 {}
@@ -68,11 +134,16 @@ Analyze the existing project before creating tasks.
 
 Rules:
 
-- Reuse existing files when possible.
-- Do not initialize a new project.
+- This project is Rust only.
+- NEVER generate Python, JavaScript, Java, or other language instructions.
+- NEVER provide tutorials or explanations.
+- ONLY output executable Rust engineering tasks.
+- Reuse existing Rust files when possible.
+- Do not initialize Cargo.
 - Do not create duplicate modules.
-- Reference existing files in tasks when possible.
-- Tasks must describe concrete engineering changes.
+- Reference existing Rust files in tasks.
+- Tasks must describe concrete code modifications.
+- Every task must include a Rust file path.
 
 Return ONLY valid JSON in this format:
   {{
@@ -102,11 +173,16 @@ Return ONLY valid JSON in this format:
 
         println!("\n📜 Planner Response:\n");
         println!("{}", response);
-
+        
+        let _clean_response = response
+            .replace("\\", "\\\\");
         match serde_json::from_str::<Plan>(&response) {
 
-            Ok(plan) => {
-
+            Ok(mut plan) => {
+                self.validate_plan(
+                &mut plan,
+                project_index,
+         );
                 println!(
                     "✅ Plan created with {} tasks.",
                     plan.tasks.len()
@@ -154,5 +230,6 @@ impl Agent for PlannerAgent {
 
         Some(tool_request)
     }
+    
 
 }
