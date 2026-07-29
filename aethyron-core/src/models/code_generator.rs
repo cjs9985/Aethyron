@@ -60,7 +60,18 @@ IMPORTANT:
 - Do not create demo files.
 - Use existing project modules.
 - Before selecting a file, inspect the project index.
-- Generated PATH must be an existing relevant Rust source file or a new module path under src/.
+-Generated PATH MUST be an existing file from the Project Index.
+
+Do NOT invent filenames.
+
+Do NOT use:
+- existing/file.rs
+- src/example.rs
+- main.rs unless explicitly requested.
+
+If no existing file is appropriate, return:
+
+NO_VALID_PATH
 
 Output requirements:
 - No markdown.

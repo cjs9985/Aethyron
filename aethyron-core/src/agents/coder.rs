@@ -118,6 +118,23 @@ impl CoderAgent {
                 continue;
             }
         };
+        if let Err(error) =
+    self.validate_generated_path(
+        &change.path,
+        context,
+    )
+{
+    println!(
+        "❌ {}",
+        error
+    );
+
+    if attempts >= MAX_RETRIES {
+        break;
+    }
+
+    continue;
+}
         
         generated_code = change.content.clone();
 
@@ -203,5 +220,41 @@ impl CoderAgent {
         files_changed,
         generated_code,
     }
+}
+fn validate_generated_path(
+    &self,
+    path: &str,
+    context: &ProjectContext,
+) -> Result<(), String> {
+
+    // Never allow placeholders.
+    if path == "existing/file.rs" {
+        return Err("Placeholder path generated.".into());
+    }
+
+    if path.ends_with("example.rs") {
+        return Err("Refusing to modify example.rs".into());
+    }
+
+    if !path.starts_with("src/") {
+        return Err(format!(
+            "Invalid generated path: {}",
+            path
+        ));
+    }
+
+    let exists = context.files.iter().any(|file| {
+        file.replace("\\", "/").ends_with(path)
+    });
+
+    if !exists {
+
+        return Err(format!(
+            "Target file does not exist: {}",
+            path
+        ));
+    }
+
+    Ok(())
 }
 }
