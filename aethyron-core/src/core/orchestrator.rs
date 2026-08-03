@@ -52,6 +52,12 @@ impl Orchestrator {
         let context = ContextBuilder::build().unwrap();
 
        println!("📦 Context Built");
+
+       bus.publish(Event::new(
+          EventType::ContextBuilt,
+           "ContextBuilder",
+           "Project context indexed",
+));
        println!("Cargo.toml size: {}", context.cargo_toml.len());
        println!("Files discovered: {}", context.files.len());
 
@@ -65,10 +71,20 @@ let task = Task {
 
 println!("🧭 Creating mission plan...");
 
+bus.publish(Event::new(
+    EventType::PlanningStarted,
+    "Planner",
+    mission.goal.clone(),
+));
+
 if let Some(plan) = planner.create_plan_with_context(&task, 
 Some(&context),
 ).await {
-
+   bus.publish(Event::new(
+    EventType::PlanningCompleted,
+    "Planner",
+    format!("{} tasks generated", plan.tasks.len()),
+));
    let mut queue = crate::core::task_queue::TaskQueue::new();
    let mut files_changed: Vec<String> = Vec::new();
 
@@ -81,8 +97,15 @@ for description in plan.tasks {
 
 let mut review_notes = Vec::new();
 
-while let Some(task) = queue.next() {
+let mut repairs = 0usize;
+let mut completed_tasks = 0usize;
 
+while let Some(task) = queue.next() {
+    bus.publish(Event::new(
+    EventType::TaskStarted,
+    "TaskQueue",
+    task.description.clone(),
+));
     if let Some(request) = coder.execute(&task).await {
 
         if let Err(error) = ToolDispatcher::execute(request) {
@@ -91,95 +114,54 @@ while let Some(task) = queue.next() {
                 error
             );
         }
+        bus.publish(Event::new(
+    EventType::MissionCompleted,
+    "Orchestrator",
+    mission.goal.clone(),
+));
     }
 
     let coder_result = coder.execute_with_context(
         &task,
         &context,
     ).await;
-    let review = reviewer.review(
-    &task,
-    &coder_result.generated_code,
-).await;
-if !review.passed {
 
-    println!(
-        "⚠️ Review failed: {}",
-        review.feedback
-    );
-
-    let repair_result =
-        crate::core::repair_engine::RepairEngine::repair(
-            review.feedback.clone(),
-            coder_result.generated_code.clone(),
-        )
-        .await;
-
-    match repair_result {
-
-        Ok(_) => {
-            println!(
-                "🔄 Repair completed."
-            );
-        }
-
-        Err(error) => {
-            println!(
-                "❌ Repair failed: {}",
-                error
-            );
-        }
-    }
-}
-    files_changed.extend(coder_result.files_changed.clone());
-
-    let review = reviewer.review(
+    bus.publish(Event::new(
+    EventType::CodeGenerated,
+    "Coder",
+    format!(
+        "{} files modified",
+        coder_result.files_changed.len()
+    ),
+));
+let review = reviewer.review(
     &task,
     &coder_result.generated_code,
 ).await;
 
-
 if !review.passed {
-
     println!(
         "⚠️ Review failed: {}",
         review.feedback
     );
-
-    match crate::core::repair_engine::RepairEngine::repair(
-        review.feedback.clone(),
-        coder_result.generated_code.clone(),
-    )
-    .await
-    {
-
-        Ok(_) => {
-
-            println!(
-                "🔄 Repair completed. Retrying task..."
-            );
-
-        }
-
-        Err(error) => {
-
-            println!(
-                "❌ Repair failed: {}",
-                error
-            );
-        }
-    }
 }
 
+completed_tasks += 1;
+
+files_changed.extend(coder_result.files_changed.clone());
 
 review_notes.push(review.feedback);
+
 }
 let notes = review_notes.join("\n");
+
+let success = review_notes.iter().all(|n| {!n.to_lowercase().contains("failed")});
+
 let result = MissionResult {
     mission_id: mission.id.to_string(),
     goal: mission.goal.clone(),
-    success: true,
-    files_changed,
+    success,
+    files_changed: files_changed.clone(),
     notes,
 };
 
@@ -193,6 +175,13 @@ match MemoryStore::save_result(&result) {
         println!("❌ Memory save failed: {}", error);
     }
 }
+println!();
+println!("========== Mission Summary ==========");
+println!("Tasks Completed : {}", completed_tasks);
+println!("Files Changed   : {}", files_changed.len());
+println!("Repairs         : {}", repairs);
+println!("Success         : {}", success);
+println!("=====================================");
     }
 } 
 }

@@ -1,5 +1,7 @@
-# Rust
-target/
+# Rust build artifacts
+/aethyron-core/target/
+
+# Cargo.lock is intentionally tracked (binary project — reproducible builds)
 
 # IDE
 .vscode/
@@ -21,9 +23,5 @@ Thumbs.db
 *.temp
 *.swp
 
-# Aethyron runtime/generated data
-workspace/
-memory/
-*.db
-*.sqlite
-*.sqlite3
+# Aethyron-specific generated runtime data (not the sample mission fixture)
+aethyron-core/aethyron_memory.json

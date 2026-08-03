@@ -4,11 +4,23 @@ use chrono::{DateTime, Utc};
 pub enum EventType {
     MissionCreated,
     MissionStarted,
+
+    ContextBuilt,
+
+    PlanningStarted,
+    PlanningCompleted,
+
+    TaskStarted,
+
     AgentStarted,
     ModelRequested,
     ModelCompleted,
     AgentCompleted,
+
+    CodeGenerated,
+
     MissionCompleted,
+
     Error,
 }
 
