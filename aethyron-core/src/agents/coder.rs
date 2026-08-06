@@ -236,12 +236,20 @@ fn validate_generated_path(
         return Err("Refusing to modify example.rs".into());
     }
 
-    if !path.starts_with("src/") {
+    let allowed = path == "Cargo.toml"
+    || path == "README.md"
+    || path.starts_with("src/")
+    || path.starts_with("tests/")
+    || path.starts_with("examples/")
+    || path.starts_with("benches/")
+    || path.starts_with("workspace/");
+
+    if !allowed {
         return Err(format!(
-            "Invalid generated path: {}",
-            path
-        ));
-    }
+           "Invalid generated path: {}",
+        path
+    ));
+}
 
     let exists = context.files.iter().any(|file| {
         file.replace("\\", "/").ends_with(path)

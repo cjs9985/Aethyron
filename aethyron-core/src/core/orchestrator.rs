@@ -97,7 +97,7 @@ for description in plan.tasks {
 
 let mut review_notes = Vec::new();
 
-let mut repairs = 0usize;
+let repairs = 0usize;
 let mut completed_tasks = 0usize;
 
 while let Some(task) = queue.next() {

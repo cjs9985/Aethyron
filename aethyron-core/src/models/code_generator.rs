@@ -15,77 +15,125 @@ impl CodeGenerator {
         let client = OllamaClient::new();
 
         let prompt = format!(
-r#"You are the senior Rust engineer responsible for maintaining an existing project.
+r#"You are Aethyron's autonomous Rust code generation engine.
+
+You are communicating with software, not a human.
+
+Your response is parsed automatically.
+
+If you output anything except the required protocol, the response will be rejected.
+
+========================
+OUTPUT FORMAT
+========================
+
+Your entire response MUST be exactly:
+
+PATH: relative/project/path
+-----BEGIN CODE-----
+code only
+-----END CODE-----
+
+No Markdown.
+No explanations.
+No JSON.
+No code fences.
+No comments before PATH.
+No text after END CODE.
+
+========================
+PROJECT
+========================
 
 Project Index:
 
 {}
 
-Task:
+========================
+TASK
+========================
 
 {}
 
-Requirements:
+========================
+RULES
+========================
 
-- Modify the EXISTING project.
-- Reuse existing modules whenever possible.
-- Do NOT invent a new architecture.
-- Do NOT generate unrelated examples.
-- Only create new files when the task explicitly requires them.
-- Preserve existing coding style.
+1. Before selecting a file, inspect the Project Index.
 
-Return EXACTLY in this format.
+2. If the task specifies a destination path, use that exact path.
 
-PATH: src/appropriate_module.rs
+3. Otherwise modify the closest existing file.
+
+4. Never invent filenames.
+
+5. Never return NO_VALID_PATH.
+
+6. Never refuse the task.
+
+7. If the task requires a new file, create it.
+
+========================
+Cargo.toml
+========================
+
+When modifying Cargo.toml:
+
+Return ONLY the dependency lines to add.
+
+Example:
+
+PATH: Cargo.toml
 -----BEGIN CODE-----
-Rust source code only
+bcrypt = "0.12"
+argon2 = "0.5"
 -----END CODE-----
-The PATH value is an example format only. Never use src/example.rs unless the task explicitly names it.
-Rules:
 
-Security requirements:
-- Never store plaintext passwords.
-- Never compare plaintext passwords.
-- Use bcrypt or Argon2 for password hashing.
-- Password fields must store only password hashes.
-- Authentication must verify hashes.
+Never output:
 
-Code requirements:
-- Reuse existing project structure.
-- Do not create duplicate modules.
-- Do not initialize new projects.
-- Use existing dependencies from Cargo.toml.
-IMPORTANT:
-- Do not modify src/example.rs unless the task explicitly requires it.
-- Do not create demo files.
-- Use existing project modules.
-- Before selecting a file, inspect the project index.
--Generated PATH MUST be an existing file from the Project Index.
+[package]
+[workspace]
+[dependencies]
 
-Do NOT invent filenames.
+========================
+Rust files
+========================
 
-Do NOT use:
-- existing/file.rs
-- src/example.rs
-- main.rs unless explicitly requested.
+Modify only the requested portion.
 
-If no existing file is appropriate, return:
+Do not rewrite an entire file.
 
-NO_VALID_PATH
+Preserve the existing style.
 
-Output requirements:
-- No markdown.
-- No JSON.
-- No explanations.
-- No comments before or after.
+Reuse existing modules whenever possible.
+
+========================
+Security
+========================
+
+Never store plaintext passwords.
+
+Never compare plaintext passwords.
+
+Use Argon2 or bcrypt.
+
+Store only password hashes.
+
+Verify hashes during authentication.
 "#,
     project_index,
     instruction,
 );
         let response =
             client.generate(&prompt).await?;
+        if !response.trim_start().starts_with("PATH:") {
+    return Err(anyhow!(
+        "Model did not return a valid code patch."
+    ));
+}
+        
         Self::parse_generated_file(&response, project_index,)
-    }
+}
 
     pub async fn fix(
         request: &FixRequest,
@@ -188,6 +236,12 @@ Rules:
         "Placeholder path returned by model."
     ));
 }
+       if !cleaned.contains("PATH:") {
+    return Err(anyhow!(
+        "Model did not follow the required output format.\nResponse:\n{}",
+        cleaned
+    ));
+}
 
         let content =
             cleaned
@@ -206,16 +260,22 @@ Rules:
         }
         if !project_index.is_empty() {
 
-    let exists =
-        project_index
-            .lines()
-            .any(|line| line.trim() == path);
+    let normalized_path = path.replace('\\', "/");
+
+    let exists = project_index.lines().any(|line| {
+
+        let candidate = line.trim().replace('\\', "/");
+
+        candidate == normalized_path
+            || candidate.ends_with(&normalized_path)
+            || normalized_path.ends_with(&candidate)
+    });
 
     if !exists {
 
         let allowed_new_module =
-            path.starts_with("src/")
-            && path.ends_with(".rs");
+            normalized_path.starts_with("src/")
+                && normalized_path.ends_with(".rs");
 
         if !allowed_new_module {
 
@@ -231,9 +291,7 @@ Rules:
                 "Generated code empty"
             ));
         }
-        if !project_index.contains(&path) && !path.starts_with("src/") {
-            return Err(anyhow!("Generated invalid project path"));
-            }
+        
         if path.contains('<')
     || path.contains('>')
 {

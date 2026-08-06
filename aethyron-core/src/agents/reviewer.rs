@@ -87,7 +87,7 @@ impl ReviewerAgent {
         if code.contains(pattern) {
 
             return Err(format!(
-                "Forbidden pattern detected: {}",
+                "Security violation: '{}' found. Replace plaintext password storage with Argon2 password hashing.",
                 pattern
             ));
         }

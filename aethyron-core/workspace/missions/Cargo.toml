@@ -1,2 +1,2 @@
 [dependencies]
-bcrypt = "0.9"
+bcrypt = "0.13"
