@@ -147,13 +147,24 @@ impl CoderAgent {
 
         println!("📝 Writing {}", operation.path);
 
-        if let Err(error) = EditorTool::write(
-            &operation.path,
-            &operation.content,
-        ) {
-            println!("❌ Write error: {}", error);
-            break;
-        }
+       if std::path::Path::new(&operation.path).exists() {
+    println!(
+        "❌ Refusing to overwrite existing file: {}",
+        operation.path
+    );
+    println!(
+        "⚠️ Existing-file patching is required before this change can be applied."
+    );
+    break;
+}
+
+if let Err(error) = EditorTool::write(
+    &operation.path,
+    &operation.content,
+) {
+    println!("❌ Write error: {}", error);
+    break;
+}
 
         println!("✅ Generated {}", operation.path);
 
