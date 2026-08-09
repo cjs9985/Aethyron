@@ -141,27 +141,34 @@ impl CoderAgent {
         let previous_code = generated_code.clone();
 
         let operation = FileOperation {
-            path: change.path,
+            path: change.path.clone(),
             content: generated_code.clone(),
         };
 
         println!("📝 Writing {}", operation.path);
-
-       if std::path::Path::new(&operation.path).exists() {
+    
+       let result = if change.is_patch {
+        EditorTool::append(
+            &operation.path,
+            &operation.content,
+        )
+       } else if std::path::Path::new(&operation.path).exists() {
     println!(
         "❌ Refusing to overwrite existing file: {}",
         operation.path
     );
     println!(
-        "⚠️ Existing-file patching is required before this change can be applied."
+        "⚠️ Existing-file patching is required for existing files."
     );
     break;
-}
+} else {
+    EditorTool::write(
+        &operation.path,
+        &operation.content,
+    )
+};
 
-if let Err(error) = EditorTool::write(
-    &operation.path,
-    &operation.content,
-) {
+if let Err(error) = result {
     println!("❌ Write error: {}", error);
     break;
 }

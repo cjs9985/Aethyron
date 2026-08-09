@@ -1,21 +1,33 @@
-use crate::models::password_hash::{hash_password, verify_password};
-use std::str;
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_hash_and_verify_password() {
-        let password = "secure_password123";
-        let hashed_password = hash_password(password).unwrap();
-        assert!(verify_password(hashed_password.as_str(), password).is_ok());
+    fn test_hash_password() -> Result<(), Box<dyn std::error::Error>> {
+        let password = "password123";
+        let hash_result = hash_password(password)?;
+        assert!(hash_result.is_ok());
+        let hash = hash_result?;
+        assert_ne!(hash, password);
+
+        // Verify the same password hashes to the same value
+        let verify_result = verify_password(password, &hash)?;
+        assert!(verify_result.is_ok());
+        assert!(verify_result?);
+        Ok(())
     }
 
     #[test]
-    fn test_wrong_password_verification() {
-        let password = "secure_password123";
-        let hashed_password = hash_password(password).unwrap();
-        assert!(!verify_password(hashed_password.as_str(), "wrong_password").is_ok());
+    fn test_verify_password() -> Result<(), Box<dyn std::error::Error>> {
+        let password = "password123";
+        let hash = hash_password(password)?;
+        let verify_result = verify_password("wrongpassword", &hash)?;
+        assert!(verify_result.is_err());
+
+        // Verify with the correct password
+        let verify_result = verify_password(password, &hash)?;
+        assert!(verify_result.is_ok());
+        assert!(verify_result?);
+        Ok(())
     }
 }
