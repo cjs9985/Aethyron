@@ -302,7 +302,8 @@ Rules:
         Ok(CodeChange {
             path,
             content,
-            is_patch: false,
-        })
+            is_patch: true,
+        }
+    )
     }
 }
