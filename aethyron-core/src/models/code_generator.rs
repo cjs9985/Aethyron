@@ -1,21 +1,13 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 
-use crate::models::{
-    code_change::CodeChange,
-    fix_request::FixRequest,
-    ollama::OllamaClient,
-};
+use crate::models::{code_change::CodeChange, fix_request::FixRequest, ollama::OllamaClient};
 pub struct CodeGenerator;
 impl CodeGenerator {
-    pub async fn generate(
-        instruction: &str,
-        project_index: &str,
-    ) -> Result<CodeChange> {
-
+    pub async fn generate(instruction: &str, project_index: &str) -> Result<CodeChange> {
         let client = OllamaClient::new();
 
         let prompt = format!(
-r#"You are Aethyron's autonomous Rust code generation engine.
+            r#"You are Aethyron's autonomous Rust code generation engine.
 
 You are communicating with software, not a human.
 
@@ -121,27 +113,20 @@ Store only password hashes.
 
 Verify hashes during authentication.
 "#,
-    project_index,
-    instruction,
-);
-        let response =
-            client.generate(&prompt).await?;
+            project_index, instruction,
+        );
+        let response = client.generate(&prompt).await?;
         if !response.trim_start().starts_with("PATH:") {
-    return Err(anyhow!(
-        "Model did not return a valid code patch."
-    ));
-}
-        
-        Self::parse_generated_file(&response, project_index,)
-}
+            return Err(anyhow!("Model did not return a valid code patch."));
+        }
 
-    pub async fn fix(
-        request: &FixRequest,
-    ) -> Result<CodeChange> {
+        Self::parse_generated_file(&response, project_index)
+    }
 
+    pub async fn fix(request: &FixRequest) -> Result<CodeChange> {
         let client = OllamaClient::new();
         let prompt = format!(
-r#"
+            r#"
 You are repairing Rust code.
 
 Compiler error:
@@ -173,23 +158,15 @@ Rules:
 - No markdown.
 - No explanations.
 "#,
-            request.compiler_output,
-            request.previous_code
+            request.compiler_output, request.previous_code
         );
 
+        let response = client.generate(&prompt).await?;
 
-        let response =
-            client.generate(&prompt).await?;
-
-
-        Self::parse_generated_file(&response, "",)
+        Self::parse_generated_file(&response, "")
     }
 
-    fn parse_generated_file(
-        response: &str,
-        project_index: &str,
-    ) -> Result<CodeChange> {
-
+    fn parse_generated_file(response: &str, project_index: &str) -> Result<CodeChange> {
         let cleaned = response
             .replace("```rust", "")
             .replace("```", "")
@@ -200,110 +177,76 @@ Rules:
         let begin_marker = "-----BEGIN CODE-----";
         let end_marker = "-----END CODE-----";
 
-        let path_start =
-            cleaned
-                .find(path_marker)
-                .ok_or_else(|| anyhow!("Missing PATH"))?;
-        let begin_start =
-            cleaned
-                .find(begin_marker)
-                .ok_or_else(|| anyhow!("Missing BEGIN CODE marker"))?;
-        let end_start =
-            cleaned
-                .find(end_marker)
-                .ok_or_else(|| anyhow!("Missing END CODE marker"))?;
+        let path_start = cleaned
+            .find(path_marker)
+            .ok_or_else(|| anyhow!("Missing PATH"))?;
+        let begin_start = cleaned
+            .find(begin_marker)
+            .ok_or_else(|| anyhow!("Missing BEGIN CODE marker"))?;
+        let end_start = cleaned
+            .find(end_marker)
+            .ok_or_else(|| anyhow!("Missing END CODE marker"))?;
 
-        let path =
-            cleaned
-                [
-                    path_start + path_marker.len()
-                    ..
-                    begin_start
-                ]
-                .trim()
-                .to_string();
+        let path = cleaned[path_start + path_marker.len()..begin_start]
+            .trim()
+            .to_string();
 
         let forbidden = [
-    "existing/file.rs",
-    "appropriate_module.rs",
-    "file.rs",
-    "your_file.rs",
-    "src/example.rs",
-];
+            "existing/file.rs",
+            "appropriate_module.rs",
+            "file.rs",
+            "your_file.rs",
+            "src/example.rs",
+        ];
 
-       if forbidden.contains(&path.as_str()) {
-          return Err(anyhow!(
-        "Placeholder path returned by model."
-    ));
-}
-       if !cleaned.contains("PATH:") {
-    return Err(anyhow!(
-        "Model did not follow the required output format.\nResponse:\n{}",
-        cleaned
-    ));
-}
+        if forbidden.contains(&path.as_str()) {
+            return Err(anyhow!("Placeholder path returned by model."));
+        }
+        if !cleaned.contains("PATH:") {
+            return Err(anyhow!(
+                "Model did not follow the required output format.\nResponse:\n{}",
+                cleaned
+            ));
+        }
 
-        let content =
-            cleaned
-                [
-                    begin_start + begin_marker.len()
-                    ..
-                    end_start
-                ]
-                .trim()
-                .to_string();
+        let content = cleaned[begin_start + begin_marker.len()..end_start]
+            .trim()
+            .to_string();
 
         if path.is_empty() {
-            return Err(anyhow!(
-                "Generated path empty"
-            ));
+            return Err(anyhow!("Generated path empty"));
         }
         if !project_index.is_empty() {
+            let normalized_path = path.replace('\\', "/");
 
-    let normalized_path = path.replace('\\', "/");
+            let exists = project_index.lines().any(|line| {
+                let candidate = line.trim().replace('\\', "/");
 
-    let exists = project_index.lines().any(|line| {
+                candidate == normalized_path
+                    || candidate.ends_with(&normalized_path)
+                    || normalized_path.ends_with(&candidate)
+            });
 
-        let candidate = line.trim().replace('\\', "/");
+            if !exists {
+                let allowed_new_module =
+                    normalized_path.starts_with("src/") && normalized_path.ends_with(".rs");
 
-        candidate == normalized_path
-            || candidate.ends_with(&normalized_path)
-            || normalized_path.ends_with(&candidate)
-    });
-
-    if !exists {
-
-        let allowed_new_module =
-            normalized_path.starts_with("src/")
-                && normalized_path.ends_with(".rs");
-
-        if !allowed_new_module {
-
-            return Err(anyhow!(
-                "Model selected invalid project path: {}",
-                path
-            ));
+                if !allowed_new_module {
+                    return Err(anyhow!("Model selected invalid project path: {}", path));
+                }
+            }
         }
-    }
-}
         if content.is_empty() {
-            return Err(anyhow!(
-                "Generated code empty"
-            ));
+            return Err(anyhow!("Generated code empty"));
         }
-        
-        if path.contains('<')
-    || path.contains('>')
-{
-    return Err(anyhow!(
-        "Placeholder PATH returned."
-    ));
-}
+
+        if path.contains('<') || path.contains('>') {
+            return Err(anyhow!("Placeholder PATH returned."));
+        }
         Ok(CodeChange {
             path,
             content,
             is_patch: true,
-        }
-    )
+        })
     }
 }

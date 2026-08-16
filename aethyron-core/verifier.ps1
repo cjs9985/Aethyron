@@ -39,6 +39,15 @@ Check "Authentication verifies hashes" ($auth -match 'verify\s*\(')
 Check "Authentication does not use gen_salt" ($auth -notmatch 'gen_salt')
 Check "Authentication does not use unwrap" ($auth -notmatch '\.unwrap\s*\(')
 Check "Authentication does not import unused Argon2" ($auth -notmatch 'use\s+argon2')
+$main = Get-Content "$root\src\main.rs" -Raw
+
+Check "CLI imports environment arguments" ($main -match 'use\s+std::env')
+Check "CLI supports run command" ($main -match '==\s*Some\("run"\)')
+Check "CLI creates Mission from goal" ($main -match 'Mission::new')
+Check "CLI executes Orchestrator" ($main -match 'Orchestrator::new\(\)\.execute')
+Check "CLI preserves health endpoint" ($main -match '"/health"')
+Check "CLI preserves agents endpoint" ($main -match '"/agents"')
+Check "CLI preserves CORS" ($main -match 'CorsLayer::very_permissive')
 
 Write-Host ""
 Write-Host "=============================="

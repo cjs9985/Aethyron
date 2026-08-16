@@ -11,10 +11,7 @@ impl EditorTool {
         workspace.join(path)
     }
 
-    pub fn write(
-        path: impl AsRef<Path>,
-        content: &str,
-    ) -> Result<()> {
+    pub fn write(path: impl AsRef<Path>, content: &str) -> Result<()> {
         let full_path = Self::resolve_path(path);
 
         if let Some(parent) = full_path.parent() {
@@ -26,10 +23,7 @@ impl EditorTool {
         Ok(())
     }
 
-    pub fn append(
-        path: impl AsRef<Path>,
-        content: &str,
-    ) -> Result<()> {
+    pub fn append(path: impl AsRef<Path>, content: &str) -> Result<()> {
         let full_path = Self::resolve_path(path);
 
         if let Some(parent) = full_path.parent() {

@@ -7,13 +7,10 @@ impl EventBus {
         Self
     }
 
-   pub fn publish(&self, event: Event) {
-    println!(
-        "[{}] [{:?}] [{}] {}",
-        event.timestamp,
-        event.event_type,
-        event.source,
-        event.message
-    );
-}
+    pub fn publish(&self, event: Event) {
+        println!(
+            "[{}] [{:?}] [{}] {}",
+            event.timestamp, event.event_type, event.source, event.message
+        );
+    }
 }

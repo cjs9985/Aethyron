@@ -2,20 +2,12 @@ use async_trait::async_trait;
 
 use super::{Agent, Task};
 
-use crate::models::{
-    ollama::OllamaClient,
-    review_report::ReviewReport,
-    tool_request::ToolRequest,
-};
+use crate::models::{ollama::OllamaClient, review_report::ReviewReport, tool_request::ToolRequest};
 
 pub struct ReviewerAgent;
 
 impl ReviewerAgent {
-    pub async fn review(
-        &self,
-        task: &Task,
-        generated_code: &str,
-    ) -> ReviewReport {
+    pub async fn review(&self, task: &Task, generated_code: &str) -> ReviewReport {
         if let Err(error) = self.structural_review(generated_code) {
             return ReviewReport {
                 passed: false,
@@ -73,10 +65,7 @@ impl ReviewerAgent {
     }
 
     fn security_review(&self, code: &str) -> Result<(), String> {
-        let password_patterns = [
-            "password: String",
-            "password = String",
-        ];
+        let password_patterns = ["password: String", "password = String"];
 
         for pattern in password_patterns {
             if code.contains(pattern) {
@@ -87,12 +76,7 @@ impl ReviewerAgent {
             }
         }
 
-        let plaintext_comparisons = [
-            "== password",
-            "password ==",
-            "!= password",
-            "password !=",
-        ];
+        let plaintext_comparisons = ["== password", "password ==", "!= password", "password !="];
 
         for pattern in plaintext_comparisons {
             if code.contains(pattern) {
@@ -127,10 +111,7 @@ impl ReviewerAgent {
         }
     }
 
-    async fn ai_review(
-        &self,
-        task: &Task,
-    ) -> Result<String, String> {
+    async fn ai_review(&self, task: &Task) -> Result<String, String> {
         let client = OllamaClient::new();
 
         let prompt = format!(
@@ -155,10 +136,7 @@ impl Agent for ReviewerAgent {
         "Reviewer Agent"
     }
 
-    async fn execute(
-        &self,
-        task: &Task,
-    ) -> Option<ToolRequest> {
+    async fn execute(&self, task: &Task) -> Option<ToolRequest> {
         println!("🔍 Review:");
         println!("{}", task.description);
         None

@@ -1,4 +1,4 @@
-pub mod filesystem;
-pub mod editor;
-pub mod terminal;
 pub mod dispatcher;
+pub mod editor;
+pub mod filesystem;
+pub mod terminal;

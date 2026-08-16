@@ -1,21 +1,14 @@
 use anyhow::Result;
 
-use crate::models::{
-    compiler::Compiler,
-    tool_request::ToolRequest,
-};
+use crate::models::{compiler::Compiler, tool_request::ToolRequest};
 
-use crate::tools::{
-    editor::EditorTool,
-    filesystem::FileSystem,
-};
+use crate::tools::{editor::EditorTool, filesystem::FileSystem};
 
 pub struct ToolDispatcher;
 
 impl ToolDispatcher {
     pub fn execute(request: ToolRequest) -> Result<()> {
         match request {
-
             ToolRequest::InspectProject => {
                 FileSystem::inspect_project()?;
             }
@@ -41,15 +34,11 @@ impl ToolDispatcher {
             }
 
             ToolRequest::CargoFmt => {
-                std::process::Command::new("cargo")
-                    .arg("fmt")
-                    .status()?;
+                std::process::Command::new("cargo").arg("fmt").status()?;
             }
 
             ToolRequest::GitStatus => {
-                std::process::Command::new("git")
-                    .arg("status")
-                    .status()?;
+                std::process::Command::new("git").arg("status").status()?;
             }
 
             ToolRequest::GitAdd => {

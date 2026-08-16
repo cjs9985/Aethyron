@@ -22,17 +22,11 @@ pub struct OllamaClient {
 impl OllamaClient {
     pub fn new() -> Self {
         Self {
-            endpoint:
-                "http://127.0.0.1:11434/api/generate"
-                    .to_string(),
+            endpoint: "http://127.0.0.1:11434/api/generate".to_string(),
         }
     }
 
-    pub async fn generate(
-        &self,
-        prompt: &str,
-    ) -> Result<String> {
-
+    pub async fn generate(&self, prompt: &str) -> Result<String> {
         println!("🧠 Sending request to Ollama...");
         println!("⏳ Model is reasoning...");
 
@@ -66,13 +60,13 @@ Never refuse a task.
 Always produce a valid PATH.
 "#;
 
-       let request = OllamaRequest {
-    model: "qwen2.5-coder:7b".to_string(),
-    system: system_prompt.to_string(),
-    prompt: prompt.to_string(),
-    stream: false,
-    temperature: 0.0,
-};
+        let request = OllamaRequest {
+            model: "qwen2.5-coder:7b".to_string(),
+            system: system_prompt.to_string(),
+            prompt: prompt.to_string(),
+            stream: false,
+            temperature: 0.0,
+        };
 
         let response = client
             .post(&self.endpoint)
@@ -86,13 +80,12 @@ Always produce a valid PATH.
         println!("================ MODEL RESPONSE ================");
         println!("{}", response.response);
         println!("================================================");
-   let normalized = Self::normalize_response(&response.response);
+        let normalized = Self::normalize_response(&response.response);
 
-Ok(normalized)
+        Ok(normalized)
     }
 
     fn normalize_response(response: &str) -> String {
-
         response
             .replace("```json", "")
             .replace("```rust", "")

@@ -1,5 +1,3 @@
-
-
 #[derive(Debug, Default, Clone)]
 pub struct ProjectIndex {
     pub modules: Vec<String>,
