@@ -48,6 +48,12 @@ Check "CLI executes Orchestrator" ($main -match 'Orchestrator::new\(\)\.execute'
 Check "CLI preserves health endpoint" ($main -match '"/health"')
 Check "CLI preserves agents endpoint" ($main -match '"/agents"')
 Check "CLI preserves CORS" ($main -match 'CorsLayer::very_permissive')
+Check "CLI supports inspect command" ($main -match '==\s*Some\("inspect"\)')
+Check "Inspect uses ProjectIndexer" ($main -match 'ProjectIndexer::build')
+Check "Inspect returns project summary" ($main -match 'index\.summary\(\)')
+Check "CLI supports doctor command" ($main -match '==\s*Some\("doctor"\)')
+Check "Doctor checks Ollama" ($main -match 'OllamaClient::new\(\)\.check\(\)')
+Check "Doctor checks workspace" ($main -match 'ProjectIndexer::build')
 
 Write-Host ""
 Write-Host "=============================="

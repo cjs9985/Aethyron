@@ -48,7 +48,7 @@ impl Orchestrator {
         println!("ID: {}", mission.id);
         println!("Goal: {}", mission.goal);
 
-        let context = match ContextBuilder::build() {
+        let context = match ContextBuilder::build(".") {
             Ok(context) => context,
             Err(error) => {
                 println!("❌ Context build failed: {}", error);

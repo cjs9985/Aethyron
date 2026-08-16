@@ -1,4 +1,5 @@
 use anyhow::Result;
+use std::path::Path;
 use walkdir::WalkDir;
 
 use crate::core::project_index::ProjectIndex;
@@ -6,10 +7,11 @@ use crate::core::project_index::ProjectIndex;
 pub struct ProjectIndexer;
 
 impl ProjectIndexer {
-    pub fn build() -> Result<ProjectIndex> {
+    pub fn build(workspace: impl AsRef<Path>) -> Result<ProjectIndex> {
+        let workspace = workspace.as_ref();
         let mut index = ProjectIndex::default();
 
-        for entry in WalkDir::new("src") {
+        for entry in WalkDir::new(workspace.join("src")) {
             let entry = entry?;
 
             if !entry.file_type().is_file() {

@@ -1,6 +1,9 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
+const DEFAULT_OLLAMA_URL: &str = "http://127.0.0.1:11434";
+const DEFAULT_MODEL: &str = "qwen2.5-coder:7b";
+
 #[derive(Serialize)]
 struct OllamaRequest {
     model: String,
@@ -15,15 +18,41 @@ struct OllamaResponse {
     response: String,
 }
 
+#[derive(Deserialize)]
+struct OllamaTagsResponse {
+    models: Vec<OllamaModel>,
+}
+
+#[derive(Deserialize)]
+struct OllamaModel {
+    name: String,
+}
+
 pub struct OllamaClient {
     endpoint: String,
+    model: String,
 }
 
 impl OllamaClient {
     pub fn new() -> Self {
         Self {
-            endpoint: "http://127.0.0.1:11434/api/generate".to_string(),
+            endpoint: format!("{}/api/generate", DEFAULT_OLLAMA_URL),
+            model: DEFAULT_MODEL.to_string(),
         }
+    }
+
+    pub async fn check(&self) -> Result<bool> {
+        let endpoint = format!("{}/api/tags", DEFAULT_OLLAMA_URL);
+
+        let response = reqwest::Client::new()
+            .get(endpoint)
+            .send()
+            .await?
+            .error_for_status()?
+            .json::<OllamaTagsResponse>()
+            .await?;
+
+        Ok(response.models.iter().any(|model| model.name == self.model))
     }
 
     pub async fn generate(&self, prompt: &str) -> Result<String> {
@@ -61,7 +90,7 @@ Always produce a valid PATH.
 "#;
 
         let request = OllamaRequest {
-            model: "qwen2.5-coder:7b".to_string(),
+            model: self.model.clone(),
             system: system_prompt.to_string(),
             prompt: prompt.to_string(),
             stream: false,
@@ -73,6 +102,7 @@ Always produce a valid PATH.
             .json(&request)
             .send()
             .await?
+            .error_for_status()?
             .json::<OllamaResponse>()
             .await?;
 
@@ -80,6 +110,7 @@ Always produce a valid PATH.
         println!("================ MODEL RESPONSE ================");
         println!("{}", response.response);
         println!("================================================");
+
         let normalized = Self::normalize_response(&response.response);
 
         Ok(normalized)

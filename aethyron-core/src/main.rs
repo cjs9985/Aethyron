@@ -9,6 +9,8 @@ use std::env;
 use tower_http::cors::CorsLayer;
 
 use crate::core::orchestrator::{Mission, Orchestrator};
+use crate::core::project_indexer::ProjectIndexer;
+use crate::models::ollama::OllamaClient;
 
 async fn health() -> &'static str {
     "Aethyron API is running"
@@ -31,6 +33,42 @@ async fn agents() -> axum::Json<Vec<serde_json::Value>> {
     ])
 }
 
+async fn run_doctor() {
+    println!("==============================");
+    println!("AETHYRON DOCTOR");
+    println!("==============================");
+
+    let cargo_ok = std::path::Path::new("Cargo.toml").is_file();
+    println!(
+        "{} Cargo.toml exists",
+        if cargo_ok { "PASS" } else { "FAIL" }
+    );
+
+    let src_ok = std::path::Path::new("src").is_dir();
+    println!(
+        "{} src directory exists",
+        if src_ok { "PASS" } else { "FAIL" }
+    );
+
+    match ProjectIndexer::build(std::path::Path::new(".")) {
+        Ok(index) => {
+            println!("PASS Project workspace can be indexed");
+            println!("     Files indexed: {}", index.files.len());
+        }
+        Err(error) => {
+            println!("FAIL Project workspace indexing: {}", error);
+        }
+    }
+
+    match OllamaClient::new().check().await {
+        Ok(true) => println!("PASS Ollama and qwen2.5-coder:7b available"),
+        Ok(false) => println!("FAIL Ollama reachable, but qwen2.5-coder:7b not found"),
+        Err(error) => println!("FAIL Ollama check: {}", error),
+    }
+
+    println!("==============================");
+}
+
 #[tokio::main]
 async fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
@@ -45,6 +83,23 @@ async fn main() {
 
         let mission = Mission::new(&goal);
         Orchestrator::new().execute(mission).await;
+        return;
+    }
+
+    if args.first().map(String::as_str) == Some("inspect") {
+        match ProjectIndexer::build(std::path::Path::new(".")) {
+            Ok(index) => println!("{}", index.summary()),
+            Err(error) => {
+                eprintln!("Inspect failed: {}", error);
+                std::process::exit(1);
+            }
+        }
+
+        return;
+    }
+
+    if args.first().map(String::as_str) == Some("doctor") {
+        run_doctor().await;
         return;
     }
 
