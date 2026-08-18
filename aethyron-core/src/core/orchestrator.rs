@@ -1,7 +1,9 @@
+use std::time::Instant;
+
 use uuid::Uuid;
 
 use crate::agents::{
-    Agent, Task, coder::CoderAgent, planner::PlannerAgent, reviewer::ReviewerAgent,
+    Task, coder::CoderAgent, planner::PlannerAgent, reviewer::ReviewerAgent,
 };
 
 use crate::core::{
@@ -36,6 +38,7 @@ impl Orchestrator {
     }
 
     pub async fn execute(&self, mission: Mission) {
+        let mission_started_at = Instant::now();
         let bus = EventBus::new();
 
         bus.publish(Event::new(
@@ -48,6 +51,8 @@ impl Orchestrator {
         println!("ID: {}", mission.id);
         println!("Goal: {}", mission.goal);
 
+        let phase_started_at = Instant::now();
+
         let context = match ContextBuilder::build(".") {
             Ok(context) => context,
             Err(error) => {
@@ -56,7 +61,10 @@ impl Orchestrator {
             }
         };
 
-        println!("📦 Context Built");
+        println!(
+            "📦 Context Built in {} ms",
+            phase_started_at.elapsed().as_millis()
+        );
 
         bus.publish(Event::new(
             EventType::ContextBuilt,
@@ -83,6 +91,8 @@ impl Orchestrator {
             mission.goal.clone(),
         ));
 
+        let planning_started_at = Instant::now();
+
         let plan = match planner
             .create_plan_with_context(&task, Some(&context))
             .await
@@ -93,6 +103,11 @@ impl Orchestrator {
                 return;
             }
         };
+
+        println!(
+            "📋 Planning completed in {} ms",
+            planning_started_at.elapsed().as_millis()
+        );
 
         bus.publish(Event::new(
             EventType::PlanningCompleted,
@@ -112,6 +127,8 @@ impl Orchestrator {
         }
 
         while let Some(task) = queue.next() {
+            let task_started_at = Instant::now();
+
             bus.publish(Event::new(
                 EventType::TaskStarted,
                 "TaskQueue",
@@ -121,7 +138,14 @@ impl Orchestrator {
             println!();
             println!("🔨 Task: {}", task.description);
 
+            let coder_started_at = Instant::now();
+
             let coder_result = coder.execute_with_context(&task, &context).await;
+
+            println!(
+                "🧠 Code generation completed in {} ms",
+                coder_started_at.elapsed().as_millis()
+            );
 
             bus.publish(Event::new(
                 EventType::CodeGenerated,
@@ -131,10 +155,21 @@ impl Orchestrator {
 
             files_changed.extend(coder_result.files_changed.clone());
 
-            let mut review = reviewer.review(&task, &coder_result.generated_code).await;
+            let review_started_at = Instant::now();
+
+            let mut review = reviewer
+                .review(&task, &coder_result.generated_code)
+                .await;
+
+            println!(
+                "🔍 Review completed in {} ms",
+                review_started_at.elapsed().as_millis()
+            );
 
             if !review.passed {
                 println!("⚠️ Review failed: {}", review.feedback);
+
+                let repair_started_at = Instant::now();
 
                 let repair_result = crate::core::repair_engine::RepairEngine::repair(
                     review.feedback.clone(),
@@ -142,24 +177,40 @@ impl Orchestrator {
                 )
                 .await;
 
+                println!(
+                    "🔧 Repair phase completed in {} ms",
+                    repair_started_at.elapsed().as_millis()
+                );
+
                 match repair_result {
-                     Ok(repaired_code) => {
-    repairs += 1;
+                    Ok(repaired_code) => {
+                        repairs += 1;
 
-    println!("🔄 Repair completed.");
+                        println!("🔄 Repair completed.");
 
-    review = reviewer
-        .review(&task, &repaired_code.content)
-        .await;
+                        let rereview_started_at = Instant::now();
 
-    if review.passed {
-        println!("✅ Re-review passed.");
-    } else {
-        println!("❌ Re-review failed: {}", review.feedback);
-    }
-}    
-                                
- }
+                        review = reviewer
+                            .review(&task, &repaired_code.content)
+                            .await;
+
+                        println!(
+                            "🔍 Re-review completed in {} ms",
+                            rereview_started_at.elapsed().as_millis()
+                        );
+
+                        if review.passed {
+                            println!("✅ Re-review passed.");
+                        } else {
+                            println!("❌ Re-review failed: {}", review.feedback);
+                        }
+                    }
+
+                    Err(error) => {
+                        println!("❌ Repair failed: {}", error);
+                    }
+                }
+            }
 
             review_notes.push(review.feedback.clone());
 
@@ -167,13 +218,16 @@ impl Orchestrator {
                 completed_tasks += 1;
 
                 println!("✅ Task completed: {}", task.description);
+            } else if review.passed && coder_result.files_changed.is_empty() {
+                println!("❌ Task not completed: no files were modified.");
             } else {
-                if review.passed && coder_result.files_changed.is_empty() {
-                    println!("❌ Task not completed: no files were modified.");
-                } else {
-                    println!("❌ Task not completed: {}", task.description);
-                }
+                println!("❌ Task not completed: {}", task.description);
             }
+
+            println!(
+                "⏱️ Task duration: {} ms",
+                task_started_at.elapsed().as_millis()
+            );
         }
 
         let notes = review_notes.join("\n");
@@ -184,17 +238,27 @@ impl Orchestrator {
                 .iter()
                 .all(|note| !note.to_lowercase().contains("failed"));
 
+        let total_duration_ms = mission_started_at.elapsed().as_millis();
+
         let result = MissionResult {
             mission_id: mission.id.to_string(),
             goal: mission.goal.clone(),
             success,
             files_changed,
+            tasks_completed: completed_tasks,
+            repairs,
+            duration_ms: total_duration_ms,
             notes,
         };
 
+        let memory_started_at = Instant::now();
+
         match MemoryStore::save_result(&result) {
             Ok(_) => {
-                println!("🧠 Structured mission result stored.");
+                println!(
+                    "🧠 Structured mission result stored in {} ms.",
+                    memory_started_at.elapsed().as_millis()
+                );
             }
 
             Err(error) => {
@@ -203,12 +267,12 @@ impl Orchestrator {
         }
 
         println!();
-        println!("========== Mission Summarpy ==========");
-        println!("Tasks Completed : {}", completed_tasks);
+        println!("========== Mission Summary ==========");
+        println!("Tasks Completed : {}", result.tasks_completed);
         println!("Files Changed   : {}", result.files_changed.len());
-        println!("Repairs         : {}", repairs);
-        println!("Success         : {}", success);
+        println!("Repairs         : {}", result.repairs);
+        println!("Duration        : {} ms", result.duration_ms);
+        println!("Success         : {}", result.success);
         println!("=====================================");
     }
-}
 }

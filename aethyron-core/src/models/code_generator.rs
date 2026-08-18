@@ -1,7 +1,13 @@
 use anyhow::{Result, anyhow};
 
-use crate::models::{code_change::CodeChange, fix_request::FixRequest, ollama::OllamaClient};
+use crate::models::{
+    code_change::CodeChange,
+    fix_request::FixRequest,
+    ollama::OllamaClient,
+};
+
 pub struct CodeGenerator;
+
 impl CodeGenerator {
     pub async fn generate(instruction: &str, project_index: &str) -> Result<CodeChange> {
         let client = OllamaClient::new();
@@ -115,16 +121,15 @@ Verify hashes during authentication.
 "#,
             project_index, instruction,
         );
+
         let response = client.generate(&prompt).await?;
-        if !response.trim_start().starts_with("PATH:") {
-            return Err(anyhow!("Model did not return a valid code patch."));
-        }
 
         Self::parse_generated_file(&response, project_index)
     }
 
     pub async fn fix(request: &FixRequest) -> Result<CodeChange> {
         let client = OllamaClient::new();
+
         let prompt = format!(
             r#"
 You are repairing Rust code.
@@ -145,6 +150,7 @@ PATH: <relative Rust file path>
 -----BEGIN CODE-----
 Rust source code only
 -----END CODE-----
+
 PATH rules:
 - The PATH must be the actual file to modify.
 - Choose an existing Rust source file whenever possible.
@@ -154,6 +160,7 @@ PATH rules:
   - appropriate_module.rs
   - file.rs
   - your_file.rs
+
 Rules:
 - No markdown.
 - No explanations.
@@ -167,29 +174,52 @@ Rules:
     }
 
     fn parse_generated_file(response: &str, project_index: &str) -> Result<CodeChange> {
-        let cleaned = response
-            .replace("```rust", "")
-            .replace("```", "")
-            .trim()
-            .to_string();
+        let cleaned = response.trim();
 
-        let path_marker = "PATH:";
         let begin_marker = "-----BEGIN CODE-----";
         let end_marker = "-----END CODE-----";
 
-        let path_start = cleaned
-            .find(path_marker)
-            .ok_or_else(|| anyhow!("Missing PATH"))?;
-        let begin_start = cleaned
-            .find(begin_marker)
-            .ok_or_else(|| anyhow!("Missing BEGIN CODE marker"))?;
-        let end_start = cleaned
-            .find(end_marker)
-            .ok_or_else(|| anyhow!("Missing END CODE marker"))?;
+        if cleaned.is_empty() {
+            return Err(anyhow!("Model returned an empty response."));
+        }
 
-        let path = cleaned[path_start + path_marker.len()..begin_start]
-            .trim()
-            .to_string();
+        if cleaned.contains("```") {
+            return Err(anyhow!("Generated response contains Markdown code fences."));
+        }
+
+        if !cleaned.starts_with("PATH:") {
+            return Err(anyhow!(
+                "Model did not return a valid code patch: missing PATH."
+            ));
+        }
+
+        let path_and_code = cleaned
+            .strip_prefix("PATH:")
+            .ok_or_else(|| anyhow!("Missing PATH marker."))?;
+
+        let begin_start = path_and_code
+            .find(begin_marker)
+            .ok_or_else(|| anyhow!("Missing BEGIN CODE marker."))?;
+
+        let path_section = path_and_code[..begin_start].trim();
+
+        if path_section.contains('\n') || path_section.contains('\r') {
+            return Err(anyhow!("PATH must be a single line."));
+        }
+
+        if path_section.contains(end_marker) {
+            return Err(anyhow!("Malformed PATH: END CODE marker found in PATH."));
+        }
+
+        if path_section.contains(begin_marker) {
+            return Err(anyhow!("Malformed PATH: duplicate BEGIN CODE marker."));
+        }
+
+        let path = path_section.to_string();
+
+        if path.is_empty() {
+            return Err(anyhow!("Generated path empty."));
+        }
 
         let forbidden = [
             "existing/file.rs",
@@ -197,25 +227,47 @@ Rules:
             "file.rs",
             "your_file.rs",
             "src/example.rs",
+            "relative/project/path",
         ];
 
         if forbidden.contains(&path.as_str()) {
             return Err(anyhow!("Placeholder path returned by model."));
         }
-        if !cleaned.contains("PATH:") {
+
+        if path.contains('<') || path.contains('>') {
+            return Err(anyhow!("Placeholder PATH returned."));
+        }
+
+        if path.contains("-----") {
+            return Err(anyhow!("Malformed generated path."));
+        }
+
+        let code_start = begin_start + begin_marker.len();
+
+        let remaining = &path_and_code[code_start..];
+
+        let end_start = remaining
+            .find(end_marker)
+            .ok_or_else(|| anyhow!("Missing END CODE marker."))?;
+
+        let content = remaining[..end_start].trim().to_string();
+
+        let trailing = remaining[end_start + end_marker.len()..].trim();
+
+        if !trailing.is_empty() {
             return Err(anyhow!(
-                "Model did not follow the required output format.\nResponse:\n{}",
-                cleaned
+                "Generated response contains text after END CODE."
             ));
         }
 
-        let content = cleaned[begin_start + begin_marker.len()..end_start]
-            .trim()
-            .to_string();
-
-        if path.is_empty() {
-            return Err(anyhow!("Generated path empty"));
+        if content.is_empty() {
+            return Err(anyhow!("Generated code empty."));
         }
+
+        if content.contains(end_marker) {
+            return Err(anyhow!("Multiple END CODE markers found."));
+        }
+
         if !project_index.is_empty() {
             let normalized_path = path.replace('\\', "/");
 
@@ -229,20 +281,18 @@ Rules:
 
             if !exists {
                 let allowed_new_module =
-                    normalized_path.starts_with("src/") && normalized_path.ends_with(".rs");
+                    normalized_path.starts_with("src/")
+                        && normalized_path.ends_with(".rs");
 
                 if !allowed_new_module {
-                    return Err(anyhow!("Model selected invalid project path: {}", path));
+                    return Err(anyhow!(
+                        "Model selected invalid project path: {}",
+                        path
+                    ));
                 }
             }
         }
-        if content.is_empty() {
-            return Err(anyhow!("Generated code empty"));
-        }
 
-        if path.contains('<') || path.contains('>') {
-            return Err(anyhow!("Placeholder PATH returned."));
-        }
         Ok(CodeChange {
             path,
             content,
