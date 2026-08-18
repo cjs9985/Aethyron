@@ -1,7 +1,10 @@
 use anyhow::Result;
 
 use crate::models::{
-    code_generator::CodeGenerator, fix_request::FixRequest, tool_request::ToolRequest,
+    code_change::CodeChange,
+    code_generator::CodeGenerator,
+    fix_request::FixRequest,
+    tool_request::ToolRequest,
 };
 
 use crate::tools::{dispatcher::ToolDispatcher, editor::EditorTool};
@@ -9,7 +12,10 @@ use crate::tools::{dispatcher::ToolDispatcher, editor::EditorTool};
 pub struct RepairEngine;
 
 impl RepairEngine {
-    pub async fn repair(compiler_output: String, previous_code: String) -> Result<()> {
+    pub async fn repair(
+        compiler_output: String,
+        previous_code: String,
+    ) -> Result<CodeChange> {
         println!("🔧 Repair engine activated...");
 
         println!("📋 Compiler errors:");
@@ -39,6 +45,6 @@ impl RepairEngine {
             }
         }
 
-        Ok(())
+        Ok(fix)
     }
 }

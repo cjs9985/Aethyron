@@ -33,10 +33,12 @@ async fn agents() -> axum::Json<Vec<serde_json::Value>> {
     ])
 }
 
-async fn run_doctor() {
+async fn run_doctor() -> bool {
     println!("==============================");
     println!("AETHYRON DOCTOR");
     println!("==============================");
+
+    let mut healthy = true;
 
     let cargo_ok = std::path::Path::new("Cargo.toml").is_file();
     println!(
@@ -44,29 +46,49 @@ async fn run_doctor() {
         if cargo_ok { "PASS" } else { "FAIL" }
     );
 
+    if !cargo_ok {
+        healthy = false;
+    }
+
     let src_ok = std::path::Path::new("src").is_dir();
     println!(
         "{} src directory exists",
         if src_ok { "PASS" } else { "FAIL" }
     );
 
+    if !src_ok {
+        healthy = false;
+    }
+
     match ProjectIndexer::build(std::path::Path::new(".")) {
         Ok(index) => {
             println!("PASS Project workspace can be indexed");
             println!("     Files indexed: {}", index.files.len());
         }
+
         Err(error) => {
             println!("FAIL Project workspace indexing: {}", error);
+            healthy = false;
         }
     }
 
     match OllamaClient::new().check().await {
         Ok(true) => println!("PASS Ollama and qwen2.5-coder:7b available"),
-        Ok(false) => println!("FAIL Ollama reachable, but qwen2.5-coder:7b not found"),
-        Err(error) => println!("FAIL Ollama check: {}", error),
+
+        Ok(false) => {
+            println!("FAIL Ollama reachable, but qwen2.5-coder:7b not found");
+            healthy = false;
+        }
+
+        Err(error) => {
+            println!("FAIL Ollama check: {}", error);
+            healthy = false;
+        }
     }
 
     println!("==============================");
+
+    healthy
 }
 
 #[tokio::main]
@@ -98,10 +120,15 @@ async fn main() {
         return;
     }
 
-    if args.first().map(String::as_str) == Some("doctor") {
-        run_doctor().await;
-        return;
+   if args.first().map(String::as_str) == Some("doctor") {
+    let healthy = run_doctor().await;
+
+    if !healthy {
+        std::process::exit(1);
     }
+
+    return;
+}
 
     let app = Router::new()
         .route("/health", get(health))

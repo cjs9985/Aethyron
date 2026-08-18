@@ -143,25 +143,23 @@ impl Orchestrator {
                 .await;
 
                 match repair_result {
-                    Ok(_) => {
-                        repairs += 1;
+                     Ok(repaired_code) => {
+    repairs += 1;
 
-                        println!("🔄 Repair completed.");
+    println!("🔄 Repair completed.");
 
-                        review = reviewer.review(&task, &coder_result.generated_code).await;
+    review = reviewer
+        .review(&task, &repaired_code.content)
+        .await;
 
-                        if review.passed {
-                            println!("✅ Re-review passed.");
-                        } else {
-                            println!("❌ Re-review failed: {}", review.feedback);
-                        }
-                    }
-
-                    Err(error) => {
-                        println!("❌ Repair failed: {}", error);
-                    }
-                }
-            }
+    if review.passed {
+        println!("✅ Re-review passed.");
+    } else {
+        println!("❌ Re-review failed: {}", review.feedback);
+    }
+}    
+                                
+ }
 
             review_notes.push(review.feedback.clone());
 
@@ -212,4 +210,5 @@ impl Orchestrator {
         println!("Success         : {}", success);
         println!("=====================================");
     }
+}
 }
