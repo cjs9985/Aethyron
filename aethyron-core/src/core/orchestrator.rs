@@ -37,7 +37,7 @@ impl Orchestrator {
         Self
     }
 
-    pub async fn execute(&self, mission: Mission) {
+    pub async fn execute(&self, mission: Mission)-> MissionResult {
         let mission_started_at = Instant::now();
         let bus = EventBus::new();
 
@@ -55,10 +55,20 @@ impl Orchestrator {
 
         let context = match ContextBuilder::build(".") {
             Ok(context) => context,
-            Err(error) => {
-                println!("❌ Context build failed: {}", error);
-                return;
-            }
+           Err(error) => {
+    println!("❌ Context build failed: {}", error);
+
+    return MissionResult {
+        mission_id: mission.id.to_string(),
+        goal: mission.goal.clone(),
+        success: false,
+        files_changed: Vec::new(),
+        tasks_completed: 0,
+        repairs: 0,
+        duration_ms: mission_started_at.elapsed().as_millis(),
+        notes: format!("Context build failed: {}", error),
+    };
+}
         };
 
         println!(
@@ -98,10 +108,20 @@ impl Orchestrator {
             .await
         {
             Some(plan) => plan,
-            None => {
-                println!("❌ Planner failed to create a mission plan.");
-                return;
-            }
+           None => {
+    println!("❌ Planner failed to create a mission plan.");
+
+    return MissionResult {
+        mission_id: mission.id.to_string(),
+        goal: mission.goal.clone(),
+        success: false,
+        files_changed: Vec::new(),
+        tasks_completed: 0,
+        repairs: 0,
+        duration_ms: mission_started_at.elapsed().as_millis(),
+        notes: "Planner failed to create a mission plan.".to_string(),
+    };
+}
         };
 
         println!(
@@ -274,5 +294,6 @@ impl Orchestrator {
         println!("Duration        : {} ms", result.duration_ms);
         println!("Success         : {}", result.success);
         println!("=====================================");
+        return result;
     }
 }
