@@ -1,16 +1,18 @@
 mod agents;
 mod core;
+mod mcp;
 mod memory;
 mod models;
 mod tools;
 
-use axum::{Router, routing::get};
-use std::env;
-use tower_http::cors::CorsLayer;
-
 use crate::core::orchestrator::{Mission, Orchestrator};
 use crate::core::project_indexer::ProjectIndexer;
+use crate::mcp::AethyronMcp;
 use crate::models::ollama::OllamaClient;
+use axum::{Router, routing::get};
+use rmcp::ServiceExt;
+use std::env;
+use tower_http::cors::CorsLayer;
 
 async fn health() -> &'static str {
     "Aethyron API is running"
@@ -95,6 +97,17 @@ async fn run_doctor() -> bool {
 async fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
 
+    if args.first().map(String::as_str) == Some("mcp") {
+        let server = AethyronMcp::new();
+
+        server
+            .serve(rmcp::transport::stdio())
+            .await
+            .expect("Aethyron MCP server failed");
+
+        return;
+    }
+
     if args.first().map(String::as_str) == Some("run") {
         let goal = args.get(1..).unwrap_or(&[]).join(" ");
 
@@ -120,15 +133,15 @@ async fn main() {
         return;
     }
 
-   if args.first().map(String::as_str) == Some("doctor") {
-    let healthy = run_doctor().await;
+    if args.first().map(String::as_str) == Some("doctor") {
+        let healthy = run_doctor().await;
 
-    if !healthy {
-        std::process::exit(1);
+        if !healthy {
+            std::process::exit(1);
+        }
+
+        return;
     }
-
-    return;
-}
 
     let app = Router::new()
         .route("/health", get(health))

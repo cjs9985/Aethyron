@@ -1,10 +1,6 @@
 use anyhow::{Result, anyhow};
 
-use crate::models::{
-    code_change::CodeChange,
-    fix_request::FixRequest,
-    ollama::OllamaClient,
-};
+use crate::models::{code_change::CodeChange, fix_request::FixRequest, ollama::OllamaClient};
 
 pub struct CodeGenerator;
 
@@ -255,9 +251,7 @@ Rules:
         let trailing = remaining[end_start + end_marker.len()..].trim();
 
         if !trailing.is_empty() {
-            return Err(anyhow!(
-                "Generated response contains text after END CODE."
-            ));
+            return Err(anyhow!("Generated response contains text after END CODE."));
         }
 
         if content.is_empty() {
@@ -281,14 +275,10 @@ Rules:
 
             if !exists {
                 let allowed_new_module =
-                    normalized_path.starts_with("src/")
-                        && normalized_path.ends_with(".rs");
+                    normalized_path.starts_with("src/") && normalized_path.ends_with(".rs");
 
                 if !allowed_new_module {
-                    return Err(anyhow!(
-                        "Model selected invalid project path: {}",
-                        path
-                    ));
+                    return Err(anyhow!("Model selected invalid project path: {}", path));
                 }
             }
         }

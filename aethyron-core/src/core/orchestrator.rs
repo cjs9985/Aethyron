@@ -2,9 +2,7 @@ use std::time::Instant;
 
 use uuid::Uuid;
 
-use crate::agents::{
-    Task, coder::CoderAgent, planner::PlannerAgent, reviewer::ReviewerAgent,
-};
+use crate::agents::{Task, coder::CoderAgent, planner::PlannerAgent, reviewer::ReviewerAgent};
 
 use crate::core::{
     context_builder::ContextBuilder,
@@ -37,7 +35,7 @@ impl Orchestrator {
         Self
     }
 
-    pub async fn execute(&self, mission: Mission)-> MissionResult {
+    pub async fn execute(&self, mission: Mission) -> MissionResult {
         let mission_started_at = Instant::now();
         let bus = EventBus::new();
 
@@ -55,20 +53,20 @@ impl Orchestrator {
 
         let context = match ContextBuilder::build(".") {
             Ok(context) => context,
-           Err(error) => {
-    println!("❌ Context build failed: {}", error);
+            Err(error) => {
+                println!("❌ Context build failed: {}", error);
 
-    return MissionResult {
-        mission_id: mission.id.to_string(),
-        goal: mission.goal.clone(),
-        success: false,
-        files_changed: Vec::new(),
-        tasks_completed: 0,
-        repairs: 0,
-        duration_ms: mission_started_at.elapsed().as_millis(),
-        notes: format!("Context build failed: {}", error),
-    };
-}
+                return MissionResult {
+                    mission_id: mission.id.to_string(),
+                    goal: mission.goal.clone(),
+                    success: false,
+                    files_changed: Vec::new(),
+                    tasks_completed: 0,
+                    repairs: 0,
+                    duration_ms: mission_started_at.elapsed().as_millis(),
+                    notes: format!("Context build failed: {}", error),
+                };
+            }
         };
 
         println!(
@@ -108,20 +106,20 @@ impl Orchestrator {
             .await
         {
             Some(plan) => plan,
-           None => {
-    println!("❌ Planner failed to create a mission plan.");
+            None => {
+                println!("❌ Planner failed to create a mission plan.");
 
-    return MissionResult {
-        mission_id: mission.id.to_string(),
-        goal: mission.goal.clone(),
-        success: false,
-        files_changed: Vec::new(),
-        tasks_completed: 0,
-        repairs: 0,
-        duration_ms: mission_started_at.elapsed().as_millis(),
-        notes: "Planner failed to create a mission plan.".to_string(),
-    };
-}
+                return MissionResult {
+                    mission_id: mission.id.to_string(),
+                    goal: mission.goal.clone(),
+                    success: false,
+                    files_changed: Vec::new(),
+                    tasks_completed: 0,
+                    repairs: 0,
+                    duration_ms: mission_started_at.elapsed().as_millis(),
+                    notes: "Planner failed to create a mission plan.".to_string(),
+                };
+            }
         };
 
         println!(
@@ -177,9 +175,7 @@ impl Orchestrator {
 
             let review_started_at = Instant::now();
 
-            let mut review = reviewer
-                .review(&task, &coder_result.generated_code)
-                .await;
+            let mut review = reviewer.review(&task, &coder_result.generated_code).await;
 
             println!(
                 "🔍 Review completed in {} ms",
@@ -210,9 +206,7 @@ impl Orchestrator {
 
                         let rereview_started_at = Instant::now();
 
-                        review = reviewer
-                            .review(&task, &repaired_code.content)
-                            .await;
+                        review = reviewer.review(&task, &repaired_code.content).await;
 
                         println!(
                             "🔍 Re-review completed in {} ms",
