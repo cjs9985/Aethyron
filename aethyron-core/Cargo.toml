@@ -17,3 +17,6 @@ walkdir = "2"
 axum = "0.8.9"
 tower-http = { version = "0.7.0", features = ["cors"] }
 rmcp = { version = "3.1.4", features = ["server", "transport-io"] }
+a2a-lf = "0.3.0"
+a2a-server-lf = "0.4.1"
+futures = "0.3.34"

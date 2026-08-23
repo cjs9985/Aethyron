@@ -90,4 +90,20 @@ mod tests {
         let hashed = hash_password(password).unwrap();
         assert!(!verify_password("wrong_password", &hashed).unwrap());
     }
+}use bcrypt;
+
+pub fn hash_password(password: &str) -> Result<String, bcrypt::BcryptError> {
+    bcrypt::hash(password, bcrypt::DEFAULT_COST)
+}
+
+pub fn verify_password(password: &str, hash: &str) -> Result<bool, bcrypt::BcryptError> {
+    bcrypt::verify(password, hash)
+}use bcrypt;
+
+pub fn hash_password(password: &str) -> Result<String, bcrypt::BcryptError> {
+    bcrypt::hash(password, bcrypt::DEFAULT_COST)
+}
+
+pub fn verify_password(password: &str, hash: &str) -> Result<bool, bcrypt::BcryptError> {
+    bcrypt::verify(password, hash)
 }

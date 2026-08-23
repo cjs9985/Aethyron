@@ -4,14 +4,25 @@ mod mcp;
 mod memory;
 mod models;
 mod tools;
+mod a2a_executor;
+
+use a2a::*;
+use a2a_server::{
+    agent_card::{agent_card_router, StaticAgentCard},
+    handler::DefaultRequestHandler,
+    jsonrpc::jsonrpc_router,
+    task_store::InMemoryTaskStore,
+};
 
 use crate::core::orchestrator::{Mission, Orchestrator};
 use crate::core::project_indexer::ProjectIndexer;
 use crate::mcp::AethyronMcp;
 use crate::models::ollama::OllamaClient;
-use axum::{Router, routing::get};
+
+use axum::{routing::get, Router};
 use rmcp::ServiceExt;
 use std::env;
+use std::sync::Arc;
 use tower_http::cors::CorsLayer;
 
 async fn health() -> &'static str {
@@ -118,12 +129,14 @@ async fn main() {
 
         let mission = Mission::new(&goal);
         Orchestrator::new().execute(mission).await;
+
         return;
     }
 
     if args.first().map(String::as_str) == Some("inspect") {
         match ProjectIndexer::build(std::path::Path::new(".")) {
             Ok(index) => println!("{}", index.summary()),
+
             Err(error) => {
                 eprintln!("Inspect failed: {}", error);
                 std::process::exit(1);
@@ -143,16 +156,112 @@ async fn main() {
         return;
     }
 
+    // ---------------------------------------------------------------
+    // A2A
+    // ---------------------------------------------------------------
+
+    let a2a_executor =
+        crate::a2a_executor::AethyronA2AExecutor::new();
+
+    let a2a_task_store =
+        InMemoryTaskStore::new();
+
+    let a2a_handler = Arc::new(
+        DefaultRequestHandler::new(
+            a2a_executor,
+            a2a_task_store,
+        )
+    );
+
+    let agent_card = AgentCard {
+        name: "Aethyron".to_string(),
+        description: "Aethyron autonomous coding agent".to_string(),
+        version: "0.1.0".to_string(),
+
+        supported_interfaces: vec![
+            AgentInterface::new(
+                "http://127.0.0.1:3000/a2a",
+                "JSONRPC",
+            )
+        ],
+
+        capabilities: AgentCapabilities {
+            streaming: Some(true),
+            push_notifications: Some(false),
+            extensions: None,
+            extended_agent_card: None,
+        },
+
+        default_input_modes: vec![
+            "text/plain".to_string()
+        ],
+
+        default_output_modes: vec![
+            "text/plain".to_string()
+        ],
+
+        skills: vec![
+            AgentSkill {
+                id: "aethyron-mission".to_string(),
+                name: "Aethyron Mission Execution".to_string(),
+                description:
+                    "Plans, generates, reviews, and repairs code for autonomous missions."
+                        .to_string(),
+                tags: vec![
+                    "coding".to_string(),
+                    "planning".to_string(),
+                    "repair".to_string(),
+                ],
+                examples: Some(vec![
+                    "Inspect and improve this Rust project".to_string(),
+                    "Implement the requested feature".to_string(),
+                ]),
+                input_modes: None,
+                output_modes: None,
+                security_requirements: None,
+            }
+        ],
+
+        provider: None,
+        documentation_url: None,
+        icon_url: None,
+        security_schemes: None,
+        security_requirements: None,
+        signatures: None,
+    };
+
+    let a2a_card = Arc::new(
+        StaticAgentCard::new(agent_card)
+    );
+
+    // ---------------------------------------------------------------
+    // HTTP API
+    // ---------------------------------------------------------------
+
     let app = Router::new()
         .route("/health", get(health))
         .route("/agents", get(agents))
+        .nest("/a2a", jsonrpc_router(a2a_handler))
+        .merge(agent_card_router(a2a_card))
         .layer(CorsLayer::very_permissive());
 
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:3000")
-        .await
-        .expect("failed to bind Aethyron API");
+    let listener = tokio::net::TcpListener::bind(
+        "127.0.0.1:3000"
+    )
+    .await
+    .expect("failed to bind Aethyron API");
 
-    println!("Aethyron API running at http://127.0.0.1:3000");
+    println!(
+        "Aethyron API running at http://127.0.0.1:3000"
+    );
+
+    println!(
+        "A2A JSON-RPC endpoint: http://127.0.0.1:3000/a2a"
+    );
+
+    println!(
+        "A2A Agent Card: http://127.0.0.1:3000/.well-known/agent-card.json"
+    );
 
     axum::serve(listener, app)
         .await
