@@ -114,4 +114,8 @@ pub fn hash_password(password: &str) -> Result<String, BcryptError> {
 
 pub fn verify_password(password: &str, hash: &str) -> Result<bool, BcryptError> {
     verify(password, hash)
+}use bcrypt::hash;
+
+pub fn hash_password(password: &str) -> Result<String, bcrypt::BcryptError> {
+    hash(password, bcrypt::DEFAULT_COST)
 }
