@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use super::{Agent, Task};
 
 use crate::models::{
-    code_generator::CodeGenerator, coder_result::CoderResult, compiler::Compiler,
+    code_generator::CodeGenerator, coder_result::CoderResult,
     file_operation::FileOperation, project_context::ProjectContext, tool_request::ToolRequest,
 };
 
@@ -17,10 +17,14 @@ impl Agent for CoderAgent {
     fn name(&self) -> &str {
         "Coder Agent"
     }
+
     async fn execute(&self, task: &Task) -> Option<ToolRequest> {
         println!("💻 {} received task:", self.name());
-
         println!("{}", task.description);
+
+        // Inspect project before coding so the agent has context.
+        let tool_agent = crate::agents::tool_agent::ToolAgent;
+        tool_agent.inspect_project();
 
         Some(ToolRequest::InspectProject)
     }
@@ -125,37 +129,32 @@ impl CoderAgent {
 
             files_changed.push(operation.path.clone());
 
-            println!("⚙ Running cargo check...");
+            let tool_agent = crate::agents::tool_agent::ToolAgent;
 
-            match Compiler::check() {
-                Ok(report) => {
-                    println!("✅ {}", report);
+            if tool_agent.cargo_check() {
+                break;
+            }
 
-                    break;
+            let cargo_error = crate::tools::dispatcher::ToolDispatcher::execute(
+                crate::models::tool_request::ToolRequest::CargoCheck,
+            ).output;
+
+            println!("❌ Cargo error:\n{}", cargo_error);
+
+            if attempts >= MAX_RETRIES {
+                println!("❌ Maximum repair attempts reached.");
+                break;
+            }
+
+            match RepairEngine::repair(cargo_error.clone(), previous_code.clone()).await {
+                Ok(_) => {
+                    println!("🔄 Repair completed. Retrying...");
+                    continue;
                 }
 
-                Err(error) => {
-                    println!("❌ Cargo error:\n{}", error);
-
-                    if attempts >= MAX_RETRIES {
-                        println!("❌ Maximum repair attempts reached.");
-
-                        break;
-                    }
-
-                    match RepairEngine::repair(error.to_string(), previous_code.clone()).await {
-                        Ok(_) => {
-                            println!("🔄 Repair completed. Retrying...");
-
-                            continue;
-                        }
-
-                        Err(repair_error) => {
-                            println!("❌ Repair failed: {}", repair_error);
-
-                            break;
-                        }
-                    }
+                Err(repair_error) => {
+                    println!("❌ Repair failed: {}", repair_error);
+                    break;
                 }
             }
         }

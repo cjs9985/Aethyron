@@ -10,9 +10,6 @@ use crate::models::{
 pub struct PlannerAgent;
 
 impl PlannerAgent {
-    pub async fn create_plan(&self, task: &Task) -> Option<Plan> {
-        self.create_plan_with_context(task, None).await
-    }
     fn validate_plan(&self, plan: &mut Plan, project_index: &str) {
         plan.tasks.retain(|task| {
             let words = task.split_whitespace();

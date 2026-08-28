@@ -2,7 +2,7 @@ use std::time::Instant;
 
 use uuid::Uuid;
 
-use crate::agents::{Task, coder::CoderAgent, planner::PlannerAgent, reviewer::ReviewerAgent};
+use crate::agents::{Agent, Task, coder::CoderAgent, planner::PlannerAgent, reviewer::ReviewerAgent};
 
 use crate::core::{
     context_builder::ContextBuilder,
@@ -40,6 +40,12 @@ impl Orchestrator {
         let bus = EventBus::new();
 
         bus.publish(Event::new(
+            EventType::MissionCreated,
+            "Orchestrator",
+            format!("Mission {} created", mission.id),
+        ));
+
+        bus.publish(Event::new(
             EventType::MissionStarted,
             "Orchestrator",
             format!("Mission {} started", mission.id),
@@ -55,6 +61,12 @@ impl Orchestrator {
             Ok(context) => context,
             Err(error) => {
                 println!("❌ Context build failed: {}", error);
+
+                bus.publish(Event::new(
+                    EventType::Error,
+                    "ContextBuilder",
+                    error.to_string(),
+                ));
 
                 return MissionResult {
                     mission_id: mission.id.to_string(),
@@ -91,12 +103,21 @@ impl Orchestrator {
             description: mission.goal.clone(),
         };
 
+        // Drive Agent::execute for the planner — publishes AgentStarted/tool request.
+        planner.execute(&task).await;
+
         println!("🧭 Creating mission plan...");
 
         bus.publish(Event::new(
             EventType::PlanningStarted,
             "Planner",
             mission.goal.clone(),
+        ));
+
+        bus.publish(Event::new(
+            EventType::AgentStarted,
+            "PlannerAgent",
+            "Planning started",
         ));
 
         let planning_started_at = Instant::now();
@@ -108,6 +129,12 @@ impl Orchestrator {
             Some(plan) => plan,
             None => {
                 println!("❌ Planner failed to create a mission plan.");
+
+                bus.publish(Event::new(
+                    EventType::Error,
+                    "PlannerAgent",
+                    "Planner failed to create a mission plan.",
+                ));
 
                 return MissionResult {
                     mission_id: mission.id.to_string(),
@@ -128,6 +155,12 @@ impl Orchestrator {
         );
 
         bus.publish(Event::new(
+            EventType::AgentCompleted,
+            "PlannerAgent",
+            format!("{} tasks generated", plan.tasks.len()),
+        ));
+
+        bus.publish(Event::new(
             EventType::PlanningCompleted,
             "Planner",
             format!("{} tasks generated", plan.tasks.len()),
@@ -144,6 +177,21 @@ impl Orchestrator {
             queue.add(Task { description });
         }
 
+        if queue.is_empty() {
+            println!("⚠️ Planner produced no tasks. Mission cannot proceed.");
+
+            return MissionResult {
+                mission_id: mission.id.to_string(),
+                goal: mission.goal.clone(),
+                success: false,
+                files_changed: Vec::new(),
+                tasks_completed: 0,
+                repairs: 0,
+                duration_ms: mission_started_at.elapsed().as_millis(),
+                notes: "Planner produced an empty task list.".to_string(),
+            };
+        }
+
         while let Some(task) = queue.next() {
             let task_started_at = Instant::now();
 
@@ -156,9 +204,30 @@ impl Orchestrator {
             println!();
             println!("🔨 Task: {}", task.description);
 
+            bus.publish(Event::new(
+                EventType::AgentStarted,
+                "CoderAgent",
+                task.description.clone(),
+            ));
+
+            // Agent::execute drives tool inspection before code generation.
+            coder.execute(&task).await;
+
             let coder_started_at = Instant::now();
 
+            bus.publish(Event::new(
+                EventType::ModelRequested,
+                "CoderAgent",
+                "Requesting code generation from model",
+            ));
+
             let coder_result = coder.execute_with_context(&task, &context).await;
+
+            bus.publish(Event::new(
+                EventType::ModelCompleted,
+                "CoderAgent",
+                "Model response received",
+            ));
 
             println!(
                 "🧠 Code generation completed in {} ms",
@@ -171,19 +240,69 @@ impl Orchestrator {
                 format!("{} files modified", coder_result.files_changed.len()),
             ));
 
+            bus.publish(Event::new(
+                EventType::AgentCompleted,
+                "CoderAgent",
+                format!("{} files modified", coder_result.files_changed.len()),
+            ));
+
             files_changed.extend(coder_result.files_changed.clone());
 
             let review_started_at = Instant::now();
 
+            bus.publish(Event::new(
+                EventType::AgentStarted,
+                "ReviewerAgent",
+                "Review started",
+            ));
+
+            // Agent::execute performs the structured review via the trait interface.
+            reviewer.execute(&task).await;
+
+            bus.publish(Event::new(
+                EventType::ModelRequested,
+                "ReviewerAgent",
+                "Requesting AI review from model",
+            ));
+
             let mut review = reviewer.review(&task, &coder_result.generated_code).await;
+
+            bus.publish(Event::new(
+                EventType::ModelCompleted,
+                "ReviewerAgent",
+                "AI review received",
+            ));
 
             println!(
                 "🔍 Review completed in {} ms",
                 review_started_at.elapsed().as_millis()
             );
 
+            println!(
+                "   Structural : {}",
+                if review.structural { "✅" } else { "❌" }
+            );
+            println!(
+                "   Security   : {}",
+                if review.security { "✅" } else { "❌" }
+            );
+            println!(
+                "   Compilation: {}",
+                if review.compilation { "✅" } else { "❌" }
+            );
+            println!(
+                "   AI Review  : {}",
+                if review.ai_review { "✅" } else { "❌" }
+            );
+
             if !review.passed {
                 println!("⚠️ Review failed: {}", review.feedback);
+
+                bus.publish(Event::new(
+                    EventType::Error,
+                    "ReviewerAgent",
+                    review.feedback.clone(),
+                ));
 
                 let repair_started_at = Instant::now();
 
@@ -225,6 +344,12 @@ impl Orchestrator {
                     }
                 }
             }
+
+            bus.publish(Event::new(
+                EventType::AgentCompleted,
+                "ReviewerAgent",
+                review.feedback.clone(),
+            ));
 
             review_notes.push(review.feedback.clone());
 
@@ -280,6 +405,15 @@ impl Orchestrator {
             }
         }
 
+        bus.publish(Event::new(
+            EventType::MissionCompleted,
+            "Orchestrator",
+            format!(
+                "Mission {} completed. Success: {}",
+                result.mission_id, result.success
+            ),
+        ));
+
         println!();
         println!("========== Mission Summary ==========");
         println!("Tasks Completed : {}", result.tasks_completed);
@@ -288,6 +422,7 @@ impl Orchestrator {
         println!("Duration        : {} ms", result.duration_ms);
         println!("Success         : {}", result.success);
         println!("=====================================");
-        return result;
+
+        result
     }
 }

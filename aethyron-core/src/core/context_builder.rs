@@ -6,6 +6,8 @@ use crate::memory::store::MemoryStore;
 use crate::models::project_context::ProjectContext;
 use crate::tools::filesystem::FileSystem;
 
+const MEMORY_CONTEXT_LIMIT: usize = 20;
+
 pub struct ContextBuilder;
 
 impl ContextBuilder {
@@ -16,7 +18,7 @@ impl ContextBuilder {
         Ok(ProjectContext {
             cargo_toml: FileSystem::read(workspace.join("Cargo.toml"))?,
             files: FileSystem::list(workspace)?,
-            memory: MemoryStore::load()?,
+            memory: MemoryStore::load_recent(MEMORY_CONTEXT_LIMIT)?,
             project_index: index.summary(),
         })
     }

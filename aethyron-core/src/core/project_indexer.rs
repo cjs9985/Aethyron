@@ -3,6 +3,7 @@ use std::path::Path;
 use walkdir::WalkDir;
 
 use crate::core::project_index::ProjectIndex;
+use crate::core::rust_parser::RustParser;
 
 pub struct ProjectIndexer;
 
@@ -49,6 +50,15 @@ impl ProjectIndexer {
 
                 if line.starts_with("mod ") || line.starts_with("pub mod ") {
                     index.modules.push(line.to_string());
+                }
+            }
+
+            // Extract detailed symbols (impl blocks, trait impls, associated fns)
+            // using RustParser and merge any not already captured.
+            let symbols = RustParser::extract_symbols(&source);
+            for symbol in symbols {
+                if !index.functions.contains(&symbol) && !index.structs.contains(&symbol) {
+                    index.functions.push(symbol);
                 }
             }
         }

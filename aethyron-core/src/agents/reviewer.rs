@@ -137,8 +137,23 @@ impl Agent for ReviewerAgent {
     }
 
     async fn execute(&self, task: &Task) -> Option<ToolRequest> {
-        println!("🔍 Review:");
-        println!("{}", task.description);
+        println!("🔍 {} reviewing task:", self.name());
+
+        let report = self.review(task, &task.description).await;
+
+        println!(
+            "   Review result: passed={} structural={} security={} compilation={} ai_review={}",
+            report.passed,
+            report.structural,
+            report.security,
+            report.compilation,
+            report.ai_review,
+        );
+
+        if !report.feedback.is_empty() {
+            println!("   Feedback: {}", report.feedback);
+        }
+
         None
     }
 }

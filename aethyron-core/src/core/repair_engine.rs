@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 
 use crate::models::{
     code_change::CodeChange, code_generator::CodeGenerator, fix_request::FixRequest,
@@ -29,15 +29,13 @@ impl RepairEngine {
 
         println!("⚙️ Verifying repair...");
 
-        match ToolDispatcher::execute(ToolRequest::CargoCheck) {
-            Ok(_) => {
-                println!("✅ Repair compiled successfully.");
-            }
+        let result = ToolDispatcher::execute(ToolRequest::CargoCheck);
 
-            Err(error) => {
-                println!("❌ Repair still has compilation errors.");
-                return Err(error);
-            }
+        if result.success {
+            println!("✅ Repair compiled successfully.");
+        } else {
+            println!("❌ Repair still has compilation errors.");
+            return Err(anyhow!(result.output));
         }
 
         Ok(fix)
