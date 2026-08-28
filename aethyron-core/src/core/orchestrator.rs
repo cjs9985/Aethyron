@@ -13,10 +13,12 @@ use crate::core::{
 use crate::memory::store::MemoryStore;
 
 use crate::models::mission_result::MissionResult;
+use crate::models::project_context::ProjectContext;
 
 pub struct Mission {
     pub id: Uuid,
     pub goal: String,
+    pub context: Option<ProjectContext>,
 }
 
 impl Mission {
@@ -24,6 +26,15 @@ impl Mission {
         Self {
             id: Uuid::new_v4(),
             goal: goal.to_string(),
+            context: None,
+        }
+    }
+
+    pub fn new_with_context(goal: &str, context: ProjectContext) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            goal: goal.to_string(),
+            context: Some(context),
         }
     }
 }
@@ -35,7 +46,7 @@ impl Orchestrator {
         Self
     }
 
-    pub async fn execute(&self, mission: Mission) -> MissionResult {
+    pub async fn execute(&self, mut mission: Mission) -> MissionResult {
         let mission_started_at = Instant::now();
         let bus = EventBus::new();
 
@@ -57,7 +68,7 @@ impl Orchestrator {
 
         let phase_started_at = Instant::now();
 
-        let context = match ContextBuilder::build(".") {
+        let context = match mission.context.take().map(Ok).unwrap_or_else(|| ContextBuilder::build(".")) {
             Ok(context) => context,
             Err(error) => {
                 println!("❌ Context build failed: {}", error);

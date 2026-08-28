@@ -2,6 +2,7 @@ pub mod code_change;
 pub mod code_generator;
 pub mod coder_result;
 pub mod compiler;
+pub mod conversation;
 pub mod file_operation;
 pub mod fix_request;
 pub mod mission_result;

@@ -56,8 +56,8 @@ impl PlannerAgent {
     ) -> Option<Plan> {
         let client = OllamaClient::new();
         let memory = context.map(|ctx| ctx.memory.as_str()).unwrap_or("");
-
         let project_index = context.map(|ctx| ctx.project_index.as_str()).unwrap_or("");
+        let conversation = context.map(|ctx| ctx.conversation.as_str()).unwrap_or("");
 
         let prompt = format!(
             r#"You are the planning intelligence of Aethyron.
@@ -86,6 +86,10 @@ No explanations.
 No tutorials.
 No code blocks.
 Mission:
+
+{}
+
+Conversation history (earlier turns provide context for this mission):
 
 {}
 
@@ -156,7 +160,7 @@ Return ONLY valid JSON in this format:
      No explanations.
      No extra text.
      "#,
-            task.description, memory, project_index
+            task.description, conversation, memory, project_index
         );
 
         let response = match client.generate(&prompt).await {

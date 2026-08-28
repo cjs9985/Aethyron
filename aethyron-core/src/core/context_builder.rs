@@ -12,6 +12,13 @@ pub struct ContextBuilder;
 
 impl ContextBuilder {
     pub fn build(workspace: impl AsRef<Path>) -> Result<ProjectContext> {
+        Self::build_with_conversation(workspace, String::new())
+    }
+
+    pub fn build_with_conversation(
+        workspace: impl AsRef<Path>,
+        conversation: String,
+    ) -> Result<ProjectContext> {
         let workspace = workspace.as_ref();
         let index = ProjectIndexer::build(workspace)?;
 
@@ -20,6 +27,7 @@ impl ContextBuilder {
             files: FileSystem::list(workspace)?,
             memory: MemoryStore::load_recent(MEMORY_CONTEXT_LIMIT)?,
             project_index: index.summary(),
+            conversation,
         })
     }
 }

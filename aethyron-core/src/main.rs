@@ -6,6 +6,9 @@ mod models;
 mod tools;
 mod a2a_executor;
 
+use crate::memory::store::MemoryStore;
+use crate::models::conversation::{ConversationHistory, ConversationTurn};
+
 use a2a::*;
 use a2a_server::{
     agent_card::{agent_card_router, StaticAgentCard},
@@ -14,6 +17,7 @@ use a2a_server::{
     task_store::InMemoryTaskStore,
 };
 
+use crate::core::context_builder::ContextBuilder;
 use crate::core::orchestrator::{Mission, Orchestrator};
 use crate::core::project_indexer::ProjectIndexer;
 use crate::mcp::AethyronMcp;
@@ -104,6 +108,124 @@ async fn run_doctor() -> bool {
     healthy
 }
 
+async fn run_chat() {
+    println!("==============================");
+    println!("AETHYRON CHAT");
+    println!("==============================");
+    println!("Type your engineering goal and press Enter.");
+    println!("Type 'exit' or 'quit' to leave.");
+    println!("Type 'history' to review the conversation.");
+    println!("==============================");
+    println!();
+
+    // Load persisted conversation turns from previous sessions.
+    let prior_turns = MemoryStore::load_conversation(20).unwrap_or_default();
+
+    let mut history = ConversationHistory::new();
+
+    for turn in prior_turns {
+        history.add(turn.role, turn.content);
+    }
+
+    if !history.is_empty() {
+        println!("📖 Resuming previous conversation ({} turns loaded).", history.turns.len());
+        println!();
+    }
+
+    loop {
+        print!("You > ");
+
+        // Flush so the prompt appears before the user types.
+        use std::io::Write;
+        std::io::stdout().flush().ok();
+
+        let mut input = String::new();
+
+        if std::io::stdin().read_line(&mut input).is_err() {
+            break;
+        }
+
+        let input = input.trim().to_string();
+
+        if input.is_empty() {
+            continue;
+        }
+
+        if input == "exit" || input == "quit" {
+            println!("Aethyron > Goodbye.");
+            break;
+        }
+
+        if input == "history" {
+            if history.is_empty() {
+                println!("Aethyron > No conversation history yet.");
+            } else {
+                println!("---------- Conversation History ----------");
+                println!("{}", history.format_for_prompt());
+                println!("-----------------------------------------");
+            }
+            println!();
+            continue;
+        }
+
+        // Persist the user turn.
+        let user_turn = ConversationTurn {
+            role: "user".to_string(),
+            content: input.clone(),
+        };
+
+        if let Err(e) = MemoryStore::save_turn(&user_turn) {
+            eprintln!("⚠️  Could not persist user turn: {}", e);
+        }
+
+        history.add("user", &input);
+
+        // Build context with the current conversation history.
+        let context = match ContextBuilder::build_with_conversation(
+            ".",
+            history.format_for_prompt(),
+        ) {
+            Ok(ctx) => ctx,
+            Err(error) => {
+                println!("Aethyron > ❌ Could not build project context: {}", error);
+                println!();
+                continue;
+            }
+        };
+
+        println!();
+        println!("Aethyron > 🌌 Running mission...");
+        println!();
+
+        let mission = Mission::new_with_context(&input, context);
+        let result = Orchestrator::new().execute(mission).await;
+
+        let summary = format!(
+            "Mission complete. Tasks: {} | Files changed: {} | Repairs: {} | Success: {}",
+            result.tasks_completed,
+            result.files_changed.len(),
+            result.repairs,
+            result.success,
+        );
+
+        println!();
+        println!("Aethyron > {}", summary);
+        println!();
+
+        // Persist the assistant turn.
+        let assistant_turn = ConversationTurn {
+            role: "aethyron".to_string(),
+            content: summary.clone(),
+        };
+
+        if let Err(e) = MemoryStore::save_turn(&assistant_turn) {
+            eprintln!("⚠️  Could not persist assistant turn: {}", e);
+        }
+
+        history.add("aethyron", summary);
+    }
+}
+
 #[tokio::main]
 async fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
@@ -116,6 +238,11 @@ async fn main() {
             .await
             .expect("Aethyron MCP server failed");
 
+        return;
+    }
+
+    if args.first().map(String::as_str) == Some("chat") {
+        run_chat().await;
         return;
     }
 

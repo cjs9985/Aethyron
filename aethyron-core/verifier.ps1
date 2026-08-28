@@ -214,6 +214,50 @@ Check "Agent Card router is mounted" `
     ($main -match 'agent_card_router')
 
 # ---------------------------------------------------------------
+# Chat checks
+# ---------------------------------------------------------------
+
+$conversation = Get-Content "$root\src\models\conversation.rs" -Raw
+$memoryStore  = Get-Content "$root\src\memory\store.rs" -Raw
+$contextBuilder = Get-Content "$root\src\core\context_builder.rs" -Raw
+
+Check "Chat command exists" `
+    ($main -match 'Some\("chat"\)')
+
+Check "Chat REPL loop exists" `
+    ($main -match 'run_chat')
+
+Check "ConversationHistory model exists" `
+    (Test-Path "$root\src\models\conversation.rs")
+
+Check "ConversationTurn has role and content" `
+    ($conversation -match 'pub\s+role' -and $conversation -match 'pub\s+content')
+
+Check "ConversationHistory has add method" `
+    ($conversation -match 'pub\s+fn\s+add')
+
+Check "ConversationHistory formats for prompt" `
+    ($conversation -match 'format_for_prompt')
+
+Check "MemoryStore persists conversation turns" `
+    ($memoryStore -match 'save_turn')
+
+Check "MemoryStore loads conversation history" `
+    ($memoryStore -match 'load_conversation')
+
+Check "ContextBuilder accepts conversation" `
+    ($contextBuilder -match 'build_with_conversation')
+
+Check "ProjectContext has conversation field" `
+    (Get-Content "$root\src\models\project_context.rs" -Raw) -match 'pub\s+conversation'
+
+Check "Mission supports pre-built context" `
+    (Get-Content "$root\src\core\orchestrator.rs" -Raw) -match 'new_with_context'
+
+Check "Planner prompt includes conversation history" `
+    (Get-Content "$root\src\agents\planner.rs" -Raw) -match 'Conversation history'
+
+# ---------------------------------------------------------------
 # Final report
 # ---------------------------------------------------------------
 

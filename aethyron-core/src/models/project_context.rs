@@ -4,4 +4,5 @@ pub struct ProjectContext {
     pub files: Vec<String>,
     pub memory: String,
     pub project_index: String,
+    pub conversation: String,
 }
