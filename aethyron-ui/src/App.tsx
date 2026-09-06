@@ -1,6 +1,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
+import { Chat } from "./Chat";
 
 type NodeDefinition = {
   name: string;
@@ -92,6 +93,7 @@ function App() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [missionInput, setMissionInput] = useState("");
   const [missionStatus, setMissionStatus] = useState<string | null>(null);
+  const [chatOpen, setChatOpen] = useState(false);
 
   const submitMission = async () => {
     const goal = missionInput.trim();
@@ -619,6 +621,63 @@ const handleClick = (event: MouseEvent) => {
         </button>
       </div>
     </div>
+
+    {/* ── Chat toggle button ── */}
+    <button
+      onClick={() => setChatOpen((o) => !o)}
+      title={chatOpen ? "Close chat" : "Open Aethyron chat"}
+      style={{
+        position: "absolute",
+        bottom: "32px",
+        right: "32px",
+        width: "52px",
+        height: "52px",
+        borderRadius: "50%",
+        background: chatOpen
+          ? "rgba(53, 124, 255, 0.95)"
+          : "rgba(53, 124, 255, 0.75)",
+        border: "1px solid rgba(80, 140, 255, 0.6)",
+        color: "white",
+        fontSize: "22px",
+        cursor: "pointer",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        boxShadow: "0 4px 20px rgba(53,124,255,0.45)",
+        transition: "background 0.2s, transform 0.2s",
+        zIndex: 20,
+      }}
+      onMouseEnter={(e) =>
+        ((e.currentTarget as HTMLButtonElement).style.transform = "scale(1.08)")
+      }
+      onMouseLeave={(e) =>
+        ((e.currentTarget as HTMLButtonElement).style.transform = "scale(1)")
+      }
+    >
+      {chatOpen ? "✕" : "💬"}
+    </button>
+
+    {/* ── Chat panel overlay ── */}
+    {chatOpen && (
+      <div
+        style={{
+          position: "absolute",
+          bottom: "96px",
+          right: "32px",
+          zIndex: 20,
+          animation: "fadeSlideUp 0.2s ease-out",
+        }}
+      >
+        <Chat onClose={() => setChatOpen(false)} />
+      </div>
+    )}
+
+    <style>{`
+      @keyframes fadeSlideUp {
+        from { opacity: 0; transform: translateY(16px); }
+        to   { opacity: 1; transform: translateY(0); }
+      }
+    `}</style>
   </div>
 );
 }

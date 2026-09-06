@@ -23,13 +23,54 @@ use crate::core::project_indexer::ProjectIndexer;
 use crate::mcp::AethyronMcp;
 use crate::models::ollama::OllamaClient;
 
-use axum::{routing::{get, post}, Json, Router};
+use axum::{
+    extract::State,
+    response::sse::{Event, KeepAlive, Sse},
+    routing::{get, post},
+    Json, Router,
+};
+use futures::stream::{self, Stream};
 use rmcp::ServiceExt;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use std::convert::Infallible;
 use std::env;
 use std::sync::Arc;
+use tokio::sync::broadcast;
 use tower_http::cors::CorsLayer;
 use tower_http::services::{ServeDir, ServeFile};
+
+// ---------------------------------------------------------------------------
+// Shared chat state — broadcast channel for SSE progress events
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize)]
+struct ChatEvent {
+    /// One of: "progress" | "result" | "error"
+    kind: String,
+    message: String,
+}
+
+#[derive(Clone)]
+struct ChatState {
+    /// Sender half of the broadcast channel.  Every SSE subscriber
+    /// receives a clone of the receiver end.
+    tx: Arc<broadcast::Sender<ChatEvent>>,
+}
+
+impl ChatState {
+    fn new() -> Self {
+        let (tx, _) = broadcast::channel(64);
+        Self { tx: Arc::new(tx) }
+    }
+
+    fn send(&self, kind: &str, message: impl Into<String>) {
+        // Ignore errors — no subscribers is fine.
+        let _ = self.tx.send(ChatEvent {
+            kind: kind.to_string(),
+            message: message.into(),
+        });
+    }
+}
 
 async fn health() -> &'static str {
     "Aethyron API is running"
@@ -55,6 +96,127 @@ async fn agents() -> axum::Json<Vec<serde_json::Value>> {
 #[derive(Deserialize)]
 struct MissionRequest {
     goal: String,
+}
+
+// ---------------------------------------------------------------------------
+// Chat request / response types
+// ---------------------------------------------------------------------------
+
+#[derive(Deserialize)]
+struct ChatRequest {
+    message: String,
+}
+
+// ---------------------------------------------------------------------------
+// POST /chat
+// Runs a mission with conversation context and returns the structured result.
+// Also broadcasts SSE progress events so connected stream subscribers see
+// live updates while the mission executes.
+// ---------------------------------------------------------------------------
+
+async fn post_chat(
+    State(chat_state): State<ChatState>,
+    Json(payload): Json<ChatRequest>,
+) -> axum::Json<serde_json::Value> {
+    let message = payload.message.trim().to_string();
+
+    if message.is_empty() {
+        return axum::Json(serde_json::json!({
+            "error": "Message cannot be empty."
+        }));
+    }
+
+    // Load prior conversation turns (up to 20) for context.
+    let prior_turns = MemoryStore::load_conversation(20).unwrap_or_default();
+    let mut history = ConversationHistory::new();
+    for turn in prior_turns {
+        history.add(turn.role, turn.content);
+    }
+    history.add("user", &message);
+
+    // Persist the user turn.
+    let user_turn = ConversationTurn {
+        role: "user".to_string(),
+        content: message.clone(),
+    };
+    if let Err(e) = MemoryStore::save_turn(&user_turn) {
+        eprintln!("⚠️  Could not persist user turn: {}", e);
+    }
+
+    // Notify SSE subscribers that the mission is starting.
+    chat_state.send("progress", "🌌 Building project context…");
+
+    // Build context with the current conversation history.
+    let context = match ContextBuilder::build_with_conversation(
+        ".",
+        history.format_for_prompt(),
+    ) {
+        Ok(ctx) => ctx,
+        Err(error) => {
+            let msg = format!("❌ Could not build project context: {}", error);
+            chat_state.send("error", &msg);
+            return axum::Json(serde_json::json!({ "error": msg }));
+        }
+    };
+
+    chat_state.send("progress", "🧭 Planning mission tasks…");
+
+    let mission = Mission::new_with_context(&message, context);
+    let result = Orchestrator::new().execute(mission).await;
+
+    let summary = format!(
+        "Mission complete. Tasks: {} | Files changed: {} | Repairs: {} | Success: {}",
+        result.tasks_completed,
+        result.files_changed.len(),
+        result.repairs,
+        result.success,
+    );
+
+    // Persist the assistant turn.
+    let assistant_turn = ConversationTurn {
+        role: "aethyron".to_string(),
+        content: summary.clone(),
+    };
+    if let Err(e) = MemoryStore::save_turn(&assistant_turn) {
+        eprintln!("⚠️  Could not persist assistant turn: {}", e);
+    }
+
+    // Broadcast the final result to SSE subscribers.
+    chat_state.send("result", &summary);
+
+    axum::Json(serde_json::json!({
+        "reply": summary,
+        "tasks_completed": result.tasks_completed,
+        "files_changed": result.files_changed.len(),
+        "repairs": result.repairs,
+        "success": result.success,
+    }))
+}
+
+// ---------------------------------------------------------------------------
+// GET /chat/stream
+// Server-Sent Events stream.  Clients connect here first, then POST /chat.
+// They receive live progress events while the mission runs.
+// ---------------------------------------------------------------------------
+
+async fn chat_stream(
+    State(chat_state): State<ChatState>,
+) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    let rx = chat_state.tx.subscribe();
+
+    let stream = stream::unfold(rx, |mut rx| async move {
+        match rx.recv().await {
+            Ok(chat_event) => {
+                let data = serde_json::to_string(&chat_event)
+                    .unwrap_or_else(|_| r#"{"kind":"error","message":"serialize error"}"#.to_string());
+                let sse_event = Event::default().data(data);
+                Some((Ok(sse_event), rx))
+            }
+            Err(_) => None,
+        }
+    });
+
+    Sse::new(stream).keep_alive(KeepAlive::default())
 }
 
 async fn run_mission(
@@ -399,6 +561,8 @@ async fn main() {
     // HTTP API + UI Static Files
     // ---------------------------------------------------------------
 
+    let chat_state = ChatState::new();
+
     let ui_dir = std::path::Path::new("ui-dist");
     let ui_index = ui_dir.join("index.html");
 
@@ -406,13 +570,16 @@ async fn main() {
         .route("/health", get(health))
         .route("/agents", get(agents))
         .route("/mission", post(run_mission))
-        .nest("/a2a", jsonrpc_router(a2a_handler))
-        .merge(agent_card_router(a2a_card))
+        .route("/chat", post(post_chat))
+        .route("/chat/stream", get(chat_stream))
+        .nest("/a2a", jsonrpc_router(a2a_handler).with_state(()))
+        .merge(agent_card_router(a2a_card).with_state(()))
         .fallback_service(
             ServeDir::new(ui_dir)
                 .fallback(ServeFile::new(ui_index))
         )
-        .layer(CorsLayer::very_permissive());
+        .layer(CorsLayer::very_permissive())
+        .with_state(chat_state);
 
     let listener = tokio::net::TcpListener::bind(
         "127.0.0.1:3000"
@@ -426,6 +593,8 @@ async fn main() {
     println!("║  UI      →  http://127.0.0.1:3000        ║");
     println!("║  API     →  http://127.0.0.1:3000/agents ║");
     println!("║  Health  →  http://127.0.0.1:3000/health ║");
+    println!("║  Chat    →  http://127.0.0.1:3000/chat   ║");
+    println!("║  Stream  →  http://127.0.0.1:3000/chat/stream ║");
     println!("║  A2A     →  http://127.0.0.1:3000/a2a    ║");
     println!("╚══════════════════════════════════════════╝");
 
