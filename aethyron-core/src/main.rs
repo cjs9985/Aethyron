@@ -23,11 +23,13 @@ use crate::core::project_indexer::ProjectIndexer;
 use crate::mcp::AethyronMcp;
 use crate::models::ollama::OllamaClient;
 
-use axum::{routing::get, Router};
+use axum::{routing::{get, post}, Json, Router};
 use rmcp::ServiceExt;
+use serde::Deserialize;
 use std::env;
 use std::sync::Arc;
 use tower_http::cors::CorsLayer;
+use tower_http::services::{ServeDir, ServeFile};
 
 async fn health() -> &'static str {
     "Aethyron API is running"
@@ -48,6 +50,38 @@ async fn agents() -> axum::Json<Vec<serde_json::Value>> {
             "role": "Stores and retrieves mission context"
         }),
     ])
+}
+
+#[derive(Deserialize)]
+struct MissionRequest {
+    goal: String,
+}
+
+async fn run_mission(
+    Json(payload): Json<MissionRequest>,
+) -> axum::Json<serde_json::Value> {
+    let goal = payload.goal.trim().to_string();
+
+    if goal.is_empty() {
+        return axum::Json(serde_json::json!({
+            "status": "error",
+            "message": "Mission goal cannot be empty."
+        }));
+    }
+
+    let goal_clone = goal.clone();
+
+    tokio::spawn(async move {
+        let mission = crate::core::orchestrator::Mission::new(&goal_clone);
+        crate::core::orchestrator::Orchestrator::new()
+            .execute(mission)
+            .await;
+    });
+
+    axum::Json(serde_json::json!({
+        "status": "accepted",
+        "message": format!("Mission started: {}", goal)
+    }))
 }
 
 async fn run_doctor() -> bool {
@@ -362,14 +396,22 @@ async fn main() {
     );
 
     // ---------------------------------------------------------------
-    // HTTP API
+    // HTTP API + UI Static Files
     // ---------------------------------------------------------------
+
+    let ui_dir = std::path::Path::new("ui-dist");
+    let ui_index = ui_dir.join("index.html");
 
     let app = Router::new()
         .route("/health", get(health))
         .route("/agents", get(agents))
+        .route("/mission", post(run_mission))
         .nest("/a2a", jsonrpc_router(a2a_handler))
         .merge(agent_card_router(a2a_card))
+        .fallback_service(
+            ServeDir::new(ui_dir)
+                .fallback(ServeFile::new(ui_index))
+        )
         .layer(CorsLayer::very_permissive());
 
     let listener = tokio::net::TcpListener::bind(
@@ -378,19 +420,16 @@ async fn main() {
     .await
     .expect("failed to bind Aethyron API");
 
-    println!(
-        "Aethyron API running at http://127.0.0.1:3000"
-    );
-
-    println!(
-        "A2A JSON-RPC endpoint: http://127.0.0.1:3000/a2a"
-    );
-
-    println!(
-        "A2A Agent Card: http://127.0.0.1:3000/.well-known/agent-card.json"
-    );
+    println!("╔══════════════════════════════════════════╗");
+    println!("║           AETHYRON  ONLINE               ║");
+    println!("╠══════════════════════════════════════════╣");
+    println!("║  UI      →  http://127.0.0.1:3000        ║");
+    println!("║  API     →  http://127.0.0.1:3000/agents ║");
+    println!("║  Health  →  http://127.0.0.1:3000/health ║");
+    println!("║  A2A     →  http://127.0.0.1:3000/a2a    ║");
+    println!("╚══════════════════════════════════════════╝");
 
     axum::serve(listener, app)
         .await
-        .expect("Aethyron API server failed");
+        .expect("Aethyron server failed");
 }

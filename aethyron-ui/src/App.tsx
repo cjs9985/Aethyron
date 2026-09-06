@@ -90,12 +90,40 @@ function App() {
 
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [missionInput, setMissionInput] = useState("");
+  const [missionStatus, setMissionStatus] = useState<string | null>(null);
+
+  const submitMission = async () => {
+    const goal = missionInput.trim();
+    if (!goal) return;
+
+    setMissionStatus("Sending mission…");
+
+    try {
+      const response = await fetch("/mission", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ goal }),
+      });
+
+      const data = await response.json();
+
+      if (data.status === "accepted") {
+        setMissionStatus(`✔ Mission accepted: "${goal}"`);
+        setMissionInput("");
+      } else {
+        setMissionStatus(`✘ ${data.message}`);
+      }
+    } catch {
+      setMissionStatus("✘ Could not reach Aethyron API.");
+    }
+  };
 
   useEffect(() => {
     const mount = mountRef.current;
 
     if (!mount) return;
-    fetch("http://127.0.0.1:3000/agents")
+    fetch("/agents")
   .then((response) => {
     if (!response.ok) {
       throw new Error("Failed to fetch agents");
@@ -524,6 +552,73 @@ const handleClick = (event: MouseEvent) => {
         </div>
       </div>
     )}
+
+    {/* Mission Input Panel */}
+    <div
+      style={{
+        position: "absolute",
+        bottom: "32px",
+        left: "50%",
+        transform: "translateX(-50%)",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: "10px",
+        width: "min(640px, 90vw)",
+        fontFamily: "sans-serif",
+      }}
+    >
+      {missionStatus && (
+        <div
+          style={{
+            fontSize: "13px",
+            color: missionStatus.startsWith("✔") ? "#4ade80" : "#f87171",
+            background: "rgba(5, 7, 13, 0.85)",
+            padding: "8px 16px",
+            borderRadius: "8px",
+            border: "1px solid rgba(80, 140, 255, 0.3)",
+          }}
+        >
+          {missionStatus}
+        </div>
+      )}
+
+      <div style={{ display: "flex", width: "100%", gap: "8px" }}>
+        <input
+          type="text"
+          placeholder="Describe your mission goal…"
+          value={missionInput}
+          onChange={(e) => setMissionInput(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && submitMission()}
+          style={{
+            flex: 1,
+            padding: "12px 16px",
+            background: "rgba(5, 7, 13, 0.88)",
+            border: "1px solid rgba(80, 140, 255, 0.45)",
+            borderRadius: "8px",
+            color: "white",
+            fontSize: "14px",
+            outline: "none",
+          }}
+        />
+        <button
+          onClick={submitMission}
+          style={{
+            padding: "12px 22px",
+            background: "rgba(53, 124, 255, 0.85)",
+            border: "none",
+            borderRadius: "8px",
+            color: "white",
+            fontSize: "14px",
+            fontWeight: 600,
+            cursor: "pointer",
+            whiteSpace: "nowrap",
+          }}
+        >
+          Run Mission
+        </button>
+      </div>
+    </div>
   </div>
 );
 }
