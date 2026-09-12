@@ -97,7 +97,13 @@ function MessageBubble({ msg }: { msg: Message }) {
         >
           {label}
         </span>
-        <span style={{ fontSize: "10px", color: "rgba(156,163,175,0.5)" }}>
+
+        <span
+          style={{
+            fontSize: "10px",
+            color: "rgba(156,163,175,0.5)",
+          }}
+        >
           {msg.ts}
         </span>
       </div>
@@ -112,7 +118,9 @@ function MessageBubble({ msg }: { msg: Message }) {
           borderRadius: isUser
             ? "12px 12px 2px 12px"
             : "12px 12px 12px 2px",
-          color: isProgress ? "rgba(156,163,175,0.7)" : "rgba(229,231,235,0.92)",
+          color: isProgress
+            ? "rgba(156,163,175,0.7)"
+            : "rgba(229,231,235,0.92)",
           fontSize: isProgress ? "12px" : "13px",
           lineHeight: 1.55,
           fontStyle: isProgress ? "italic" : "normal",
@@ -146,12 +154,17 @@ export function Chat({ onClose }: ChatProps) {
       ts: now(),
     },
   ]);
+
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const sseRef = useRef<EventSource | null>(null);
+
+  // Tracks whether the current mission has already produced
+  // a final result through SSE.
+  const sseFinishedRef = useRef(false);
 
   // Auto-scroll to newest message
   useEffect(() => {
@@ -162,91 +175,181 @@ export function Chat({ onClose }: ChatProps) {
   useEffect(() => {
     return () => {
       sseRef.current?.close();
+      sseRef.current = null;
     };
   }, []);
 
   const addMessage = (role: MessageRole, content: string) => {
     setMessages((prev) => [
       ...prev,
-      { id: nextId(), role, content, ts: now() },
+      {
+        id: nextId(),
+        role,
+        content,
+        ts: now(),
+      },
     ]);
   };
 
   /** Replace the last progress message, or add a new one. */
   const upsertProgress = (content: string) => {
     setMessages((prev) => {
-      const lastIdx = [...prev].reverse().findIndex((m) => m.role === "progress");
+      const lastIdx = [...prev]
+        .reverse()
+        .findIndex((m) => m.role === "progress");
+
       if (lastIdx !== -1) {
         const realIdx = prev.length - 1 - lastIdx;
         const updated = [...prev];
-        updated[realIdx] = { ...updated[realIdx], content, ts: now() };
+
+        updated[realIdx] = {
+          ...updated[realIdx],
+          content,
+          ts: now(),
+        };
+
         return updated;
       }
-      return [...prev, { id: nextId(), role: "progress", content, ts: now() }];
+
+      return [
+        ...prev,
+        {
+          id: nextId(),
+          role: "progress",
+          content,
+          ts: now(),
+        },
+      ];
     });
   };
 
   /** Remove the last progress bubble (after final result arrives). */
   const clearProgress = () => {
     setMessages((prev) => {
-      const lastIdx = [...prev].reverse().findIndex((m) => m.role === "progress");
+      const lastIdx = [...prev]
+        .reverse()
+        .findIndex((m) => m.role === "progress");
+
       if (lastIdx === -1) return prev;
+
       const realIdx = prev.length - 1 - lastIdx;
+
       return prev.filter((_, i) => i !== realIdx);
     });
   };
 
   const sendMessage = async () => {
     const text = input.trim();
+
     if (!text || busy) return;
 
     setInput("");
     setBusy(true);
     addMessage("user", text);
 
-    // ── Open SSE stream first so we don't miss early events ──
+    // Reset completion state for this mission.
+    sseFinishedRef.current = false;
+
+    // Close any previous SSE connection.
     sseRef.current?.close();
+
+    // Open SSE before sending the POST so early progress
+    // events are not missed.
     const sse = new EventSource("/chat/stream");
     sseRef.current = sse;
 
     sse.onmessage = (e) => {
       try {
         const event: ChatEvent = JSON.parse(e.data as string);
+
+        // -------------------------------------------------------
+        // Progress
+        // -------------------------------------------------------
+
         if (event.kind === "progress") {
           upsertProgress(event.message);
-        } else if (event.kind === "result") {
+          return;
+        }
+
+        // -------------------------------------------------------
+        // Successful mission result
+        // -------------------------------------------------------
+
+        if (event.kind === "result") {
+          sseFinishedRef.current = true;
+
           clearProgress();
+
+          // A successful result must be displayed as AETHYRON.
           addMessage("aethyron", event.message);
+
           sse.close();
-          sseRef.current = null;
+
+          if (sseRef.current === sse) {
+            sseRef.current = null;
+          }
+
           setBusy(false);
-        } else if (event.kind === "error") {
+          inputRef.current?.focus();
+
+          return;
+        }
+
+        // -------------------------------------------------------
+        // Mission error
+        // -------------------------------------------------------
+
+        if (event.kind === "error") {
+          sseFinishedRef.current = true;
+
           clearProgress();
           addMessage("error", event.message);
+
           sse.close();
-          sseRef.current = null;
+
+          if (sseRef.current === sse) {
+            sseRef.current = null;
+          }
+
           setBusy(false);
+          inputRef.current?.focus();
         }
       } catch {
-        // malformed event — ignore
+        // Malformed SSE event — ignore it.
       }
     };
 
     sse.onerror = () => {
-      // SSE connection dropped — the POST response will still carry the result
+      /*
+       * SSE is the streaming channel only.
+       * The POST request is still running and can provide
+       * the final result.
+       *
+       * Therefore busy remains true here.
+       */
       sse.close();
-      sseRef.current = null;
+
+      if (sseRef.current === sse) {
+        sseRef.current = null;
+      }
     };
 
-    // ── POST the message ──
+    // ---------------------------------------------------------------------
+    // POST the message
+    // ---------------------------------------------------------------------
+
     try {
       const res = await fetch("/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text }),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          message: text,
+        }),
       });
 
-      const data = await res.json() as {
+      const data = (await res.json()) as {
         reply?: string;
         tasks_completed?: number;
         files_changed?: number;
@@ -255,31 +358,77 @@ export function Chat({ onClose }: ChatProps) {
         error?: string;
       };
 
-      // If SSE already delivered the result we don't duplicate
+      // SSE already delivered the final result.
+      // Do not display the POST response a second time.
+      if (sseFinishedRef.current) {
+        return;
+      }
+
+      // -------------------------------------------------------------------
+      // Backend returned an error
+      // -------------------------------------------------------------------
+
       if (data.error) {
+        sseFinishedRef.current = true;
+
         clearProgress();
         addMessage("error", data.error);
-        sse.close();
-        sseRef.current = null;
-        setBusy(false);
-      }
-      // If SSE hasn't fired yet (e.g. no subscriber connection), show result
-      else if (sseRef.current) {
-        clearProgress();
-        addMessage("aethyron", data.reply ?? "Mission complete.");
-        sse.close();
-        sseRef.current = null;
-        setBusy(false);
-      }
-    } catch {
-      clearProgress();
-      addMessage("error", "Could not reach Aethyron API.");
-      sse.close();
-      sseRef.current = null;
-      setBusy(false);
-    }
 
-    inputRef.current?.focus();
+        sse.close();
+
+        if (sseRef.current === sse) {
+          sseRef.current = null;
+        }
+
+        setBusy(false);
+        inputRef.current?.focus();
+
+        return;
+      }
+
+      // -------------------------------------------------------------------
+      // SSE did not deliver the final result.
+      // Use the POST response as the fallback.
+      // -------------------------------------------------------------------
+
+      sseFinishedRef.current = true;
+
+      clearProgress();
+
+      addMessage(
+        "aethyron",
+        data.reply ?? "Mission complete."
+      );
+
+      sse.close();
+
+      if (sseRef.current === sse) {
+        sseRef.current = null;
+      }
+
+      setBusy(false);
+      inputRef.current?.focus();
+    } catch {
+      /*
+       * Only report the POST failure if SSE has not already
+       * completed the mission.
+       */
+      if (!sseFinishedRef.current) {
+        sseFinishedRef.current = true;
+
+        clearProgress();
+        addMessage("error", "Could not reach Aethyron API.");
+
+        sse.close();
+
+        if (sseRef.current === sse) {
+          sseRef.current = null;
+        }
+
+        setBusy(false);
+        inputRef.current?.focus();
+      }
+    }
   };
 
   return (
@@ -294,11 +443,13 @@ export function Chat({ onClose }: ChatProps) {
         borderRadius: "16px",
         overflow: "hidden",
         backdropFilter: "blur(16px)",
-        boxShadow: "0 8px 40px rgba(0,0,0,0.7), 0 0 0 1px rgba(53,124,255,0.1)",
+        boxShadow:
+          "0 8px 40px rgba(0,0,0,0.7), 0 0 0 1px rgba(53,124,255,0.1)",
         fontFamily: "'Segoe UI', system-ui, sans-serif",
       }}
     >
       {/* ── Header ── */}
+
       <div
         style={{
           display: "flex",
@@ -310,18 +461,28 @@ export function Chat({ onClose }: ChatProps) {
           flexShrink: 0,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "10px",
+          }}
+        >
           {/* Status dot */}
+
           <div
             style={{
               width: 8,
               height: 8,
               borderRadius: "50%",
               background: busy ? "#facc15" : "#4ade80",
-              boxShadow: `0 0 6px ${busy ? "#facc15" : "#4ade80"}`,
+              boxShadow: `0 0 6px ${
+                busy ? "#facc15" : "#4ade80"
+              }`,
               transition: "background 0.3s, box-shadow 0.3s",
             }}
           />
+
           <span
             style={{
               fontSize: "13px",
@@ -332,6 +493,7 @@ export function Chat({ onClose }: ChatProps) {
           >
             AETHYRON CHAT
           </span>
+
           {busy && (
             <span
               style={{
@@ -360,10 +522,12 @@ export function Chat({ onClose }: ChatProps) {
             transition: "color 0.2s",
           }}
           onMouseEnter={(e) =>
-            ((e.target as HTMLButtonElement).style.color = "rgba(229,231,235,0.9)")
+            ((e.target as HTMLButtonElement).style.color =
+              "rgba(229,231,235,0.9)")
           }
           onMouseLeave={(e) =>
-            ((e.target as HTMLButtonElement).style.color = "rgba(156,163,175,0.6)")
+            ((e.target as HTMLButtonElement).style.color =
+              "rgba(156,163,175,0.6)")
           }
         >
           ✕
@@ -371,6 +535,7 @@ export function Chat({ onClose }: ChatProps) {
       </div>
 
       {/* ── Message thread ── */}
+
       <div
         style={{
           flex: 1,
@@ -379,16 +544,19 @@ export function Chat({ onClose }: ChatProps) {
           display: "flex",
           flexDirection: "column",
           scrollbarWidth: "thin",
-          scrollbarColor: "rgba(53,124,255,0.3) transparent",
+          scrollbarColor:
+            "rgba(53,124,255,0.3) transparent",
         }}
       >
         {messages.map((msg) => (
           <MessageBubble key={msg.id} msg={msg} />
         ))}
+
         <div ref={bottomRef} />
       </div>
 
       {/* ── Input row ── */}
+
       <div
         style={{
           display: "flex",
@@ -402,11 +570,19 @@ export function Chat({ onClose }: ChatProps) {
         <input
           ref={inputRef}
           type="text"
-          placeholder={busy ? "Mission in progress…" : "Describe your engineering goal…"}
+          placeholder={
+            busy
+              ? "Mission in progress…"
+              : "Describe your engineering goal…"
+          }
           value={input}
           disabled={busy}
           onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              sendMessage();
+            }
+          }}
           style={{
             flex: 1,
             padding: "10px 14px",
@@ -415,19 +591,26 @@ export function Chat({ onClose }: ChatProps) {
               : "rgba(5, 7, 13, 0.88)",
             border: "1px solid rgba(80, 140, 255, 0.35)",
             borderRadius: "8px",
-            color: busy ? "rgba(156,163,175,0.5)" : "white",
+            color: busy
+              ? "rgba(156,163,175,0.5)"
+              : "white",
             fontSize: "13px",
             outline: "none",
-            transition: "border-color 0.2s, background 0.2s",
+            transition:
+              "border-color 0.2s, background 0.2s",
             cursor: busy ? "not-allowed" : "text",
           }}
           onFocus={(e) =>
-            !busy && ((e.target as HTMLInputElement).style.borderColor = "rgba(80,140,255,0.7)")
+            !busy &&
+            ((e.target as HTMLInputElement).style.borderColor =
+              "rgba(80,140,255,0.7)")
           }
           onBlur={(e) =>
-            ((e.target as HTMLInputElement).style.borderColor = "rgba(80,140,255,0.35)")
+            ((e.target as HTMLInputElement).style.borderColor =
+              "rgba(80,140,255,0.35)")
           }
         />
+
         <button
           onClick={sendMessage}
           disabled={busy || !input.trim()}
@@ -439,12 +622,19 @@ export function Chat({ onClose }: ChatProps) {
                 : "rgba(53, 124, 255, 0.85)",
             border: "none",
             borderRadius: "8px",
-            color: busy || !input.trim() ? "rgba(255,255,255,0.4)" : "white",
+            color:
+              busy || !input.trim()
+                ? "rgba(255,255,255,0.4)"
+                : "white",
             fontSize: "13px",
             fontWeight: 600,
-            cursor: busy || !input.trim() ? "not-allowed" : "pointer",
+            cursor:
+              busy || !input.trim()
+                ? "not-allowed"
+                : "pointer",
             whiteSpace: "nowrap",
-            transition: "background 0.2s, color 0.2s",
+            transition:
+              "background 0.2s, color 0.2s",
             letterSpacing: "0.04em",
           }}
         >
