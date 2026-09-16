@@ -225,8 +225,7 @@ Write-Status "Opening $ServerUrl ..." "Cyan"
 Start-Process $ServerUrl
 
 Write-Host ""
-Write-Host "  Aethyron is running. You can close this window." `
-    -ForegroundColor DarkGray
+Write-Host "  Aethyron is running. You can close this window." -ForegroundColor DarkGray
 Write-Host ""
 
 Start-Sleep -Seconds 2

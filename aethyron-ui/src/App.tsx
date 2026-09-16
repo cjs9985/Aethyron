@@ -402,27 +402,36 @@ const handleClick = (event: MouseEvent) => {
 
   raycaster.setFromCamera(mouse, camera);
 
-  const intersections = raycaster.intersectObjects(
-    nodeGroups,
-    true
-  );
+  // First: check the satellite nodes (PLANNER, TOOLS, MEMORY)
+  const nodeHits = raycaster.intersectObjects(nodeGroups, true);
 
-  if (intersections.length === 0) {
-    setSelectedNode(null);
+  if (nodeHits.length > 0) {
+    const clickedObject = nodeHits[0].object;
+    const nodeIndex = nodeGroups.findIndex(
+      (group) =>
+        group === clickedObject ||
+        group.children.includes(clickedObject)
+    );
+    if (nodeIndex !== -1) {
+      setSelectedNode(nodes[nodeIndex].name);
+    }
     return;
   }
 
-  const clickedObject = intersections[0].object;
-
-  const nodeIndex = nodeGroups.findIndex(
-    (group) =>
-      group === clickedObject ||
-      group.children.includes(clickedObject)
+  // Second: check the central Aethyron core icon
+  const coreHits = raycaster.intersectObjects(
+    coreGroup.children,
+    true
   );
 
-  if (nodeIndex !== -1) {
-    setSelectedNode(nodes[nodeIndex].name);
+  if (coreHits.length > 0) {
+    // Clicking the core opens the chat
+    setChatOpen(true);
+    return;
   }
+
+  // Clicked empty space — deselect
+  setSelectedNode(null);
 };
 
     const handleResize = () => {
@@ -442,24 +451,29 @@ const handleClick = (event: MouseEvent) => {
       "resize",
       handleResize
     );
-    renderer.domElement.addEventListener(
-  "click",
-  handleClick
-);
+    renderer.domElement.addEventListener("click", handleClick);
+
+    // Pointer cursor when hovering over the core or nodes
+    const handleMouseMove = (event: MouseEvent) => {
+      const rect = renderer.domElement.getBoundingClientRect();
+      mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(mouse, camera);
+
+      const nodeHover = raycaster.intersectObjects(nodeGroups, true);
+      const coreHover = raycaster.intersectObjects(coreGroup.children, true);
+      renderer.domElement.style.cursor =
+        nodeHover.length > 0 || coreHover.length > 0 ? "pointer" : "default";
+    };
+
+    renderer.domElement.addEventListener("mousemove", handleMouseMove);
 
     return () => {
-      cancelAnimationFrame(
-        animationFrameId
-      );
+      cancelAnimationFrame(animationFrameId);
 
-      window.removeEventListener(
-        "resize",
-        handleResize
-      );
-      renderer.domElement.removeEventListener(
-  "click",
-  handleClick
-);
+      window.removeEventListener("resize", handleResize);
+      renderer.domElement.removeEventListener("click", handleClick);
+      renderer.domElement.removeEventListener("mousemove", handleMouseMove);
 
       coreGeometry.dispose();
       coreMaterial.dispose();

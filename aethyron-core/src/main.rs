@@ -143,6 +143,78 @@ async fn post_chat(
         eprintln!("⚠️  Could not persist user turn: {}", e);
     }
 
+    // ------------------------------------------------------------------
+    // Intent detection: is this a conversational message or a mission?
+    //
+    // We classify as "conversational" if the message:
+    //   • starts with a question word or greeting, OR
+    //   • ends with '?', OR
+    //   • is short (≤ 8 words) and contains no coding action verb
+    // Everything else is treated as an engineering mission.
+    // ------------------------------------------------------------------
+    let lower = message.to_lowercase();
+    let word_count = message.split_whitespace().count();
+
+    let question_starters = [
+        "what", "who", "how", "why", "when", "where", "can you", "could you",
+        "do you", "are you", "is there", "tell me", "explain", "describe",
+        "hello", "hi", "hey", "thanks", "thank you",
+    ];
+    let coding_verbs = [
+        "implement", "create", "add", "fix", "refactor", "write", "build",
+        "generate", "update", "modify", "remove", "delete", "rename",
+        "migrate", "integrate", "optimize", "deploy", "test",
+    ];
+
+    let is_question = message.trim_end().ends_with('?')
+        || question_starters
+            .iter()
+            .any(|w| lower.starts_with(w));
+
+    let has_coding_verb = coding_verbs.iter().any(|v| lower.contains(v));
+
+    let is_conversational = is_question && !has_coding_verb
+        || (word_count <= 8 && !has_coding_verb);
+
+    if is_conversational {
+        chat_state.send("progress", "💬 Thinking…");
+
+        let ollama = crate::models::ollama::OllamaClient::new();
+        let conv_history = history.format_for_prompt();
+
+        match ollama.chat(&message, &conv_history).await {
+            Ok(reply) => {
+                // Persist the assistant turn.
+                let assistant_turn = ConversationTurn {
+                    role: "aethyron".to_string(),
+                    content: reply.clone(),
+                };
+                if let Err(e) = MemoryStore::save_turn(&assistant_turn) {
+                    eprintln!("⚠️  Could not persist assistant turn: {}", e);
+                }
+
+                chat_state.send("result", &reply);
+
+                return axum::Json(serde_json::json!({
+                    "reply": reply,
+                    "tasks_completed": 0,
+                    "files_changed": 0,
+                    "repairs": 0,
+                    "success": true,
+                }));
+            }
+            Err(e) => {
+                let msg = format!("❌ Could not reach Aethyron model: {}", e);
+                chat_state.send("error", &msg);
+                return axum::Json(serde_json::json!({ "error": msg }));
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Engineering mission — run through the full Orchestrator pipeline.
+    // ------------------------------------------------------------------
+
     // Notify SSE subscribers that the mission is starting.
     chat_state.send("progress", "🌌 Building project context…");
 

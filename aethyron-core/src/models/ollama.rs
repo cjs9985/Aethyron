@@ -116,6 +116,52 @@ Always produce a valid PATH.
         Ok(normalized)
     }
 
+    /// Send a plain conversational message and get a plain-text reply.
+    /// Used when the user asks a question rather than issuing a coding mission.
+    pub async fn chat(&self, message: &str, conversation_history: &str) -> Result<String> {
+        println!("💬 Sending conversational message to Ollama...");
+
+        let client = reqwest::Client::new();
+
+        let system_prompt = r#"You are Aethyron, an autonomous AI coding assistant.
+You are friendly, knowledgeable, and concise.
+You can plan, implement, review, and repair Rust code on behalf of the user.
+When the user asks a question, answer it clearly and helpfully in plain language.
+When the user describes a coding goal or mission, confirm you understand and will proceed.
+Do not output JSON. Do not output code blocks unless the user specifically asks for code.
+"#;
+
+        let prompt = if conversation_history.is_empty() {
+            message.to_string()
+        } else {
+            format!(
+                "Conversation so far:\n{}\n\nUser: {}",
+                conversation_history, message
+            )
+        };
+
+        let request = OllamaRequest {
+            model: self.model.clone(),
+            system: system_prompt.to_string(),
+            prompt,
+            stream: false,
+            temperature: 0.7,
+        };
+
+        let response = client
+            .post(&self.endpoint)
+            .json(&request)
+            .send()
+            .await?
+            .error_for_status()?
+            .json::<OllamaResponse>()
+            .await?;
+
+        println!("📡 Conversational response received from Ollama");
+
+        Ok(response.response.trim().to_string())
+    }
+
     fn normalize_response(response: &str) -> String {
         response
             .replace("```json", "")
