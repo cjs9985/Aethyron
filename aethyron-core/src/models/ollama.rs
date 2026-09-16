@@ -20,17 +20,11 @@ pub struct OllamaClient {
 impl OllamaClient {
     pub fn new() -> Self {
         Self {
-            endpoint:
-                "http://127.0.0.1:11434/api/generate"
-                    .to_string(),
+            endpoint: "http://127.0.0.1:11434/api/generate".to_string(),
         }
     }
 
-    pub async fn generate(
-        &self,
-        prompt: &str,
-    ) -> Result<String> {
-
+    pub async fn generate(&self, prompt: &str) -> Result<String> {
         println!("🧠 Sending request to Ollama...");
         println!("⏳ Model is reasoning...");
 
@@ -59,7 +53,6 @@ impl OllamaClient {
     }
 
     fn normalize_response(response: &str) -> String {
-
         response
             .replace("```json", "")
             .replace("```rust", "")

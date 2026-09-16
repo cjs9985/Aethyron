@@ -1,21 +1,13 @@
 use anyhow::Result;
 
-use crate::models::{
-    code_generator::CodeGenerator,
-    fix_request::FixRequest,
-};
+use crate::models::{code_generator::CodeGenerator, fix_request::FixRequest};
 
 use crate::tools::editor::EditorTool;
 
 pub struct RepairEngine;
 
 impl RepairEngine {
-
-    pub async fn repair(
-        compiler_output: String,
-        previous_code: String,
-    ) -> Result<()> {
-
+    pub async fn repair(compiler_output: String, previous_code: String) -> Result<()> {
         println!("🔧 Repair engine activated...");
 
         println!("📋 Compiler errors:");
@@ -30,10 +22,7 @@ impl RepairEngine {
 
         println!("📝 Applying repair to {}", fix.path);
 
-        EditorTool::write(
-            &fix.path,
-            &fix.content,
-        )?;
+        EditorTool::write(&fix.path, &fix.content)?;
 
         println!("✅ Repair applied.");
 

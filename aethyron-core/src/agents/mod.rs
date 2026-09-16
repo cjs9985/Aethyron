@@ -1,10 +1,10 @@
-pub mod planner;
-pub mod tool_agent;
 pub mod coder;
+pub mod planner;
 pub mod reviewer;
+pub mod tool_agent;
 
-use async_trait::async_trait;
 use crate::models::tool_request::ToolRequest;
+use async_trait::async_trait;
 
 #[derive(Debug)]
 pub struct Task {
@@ -15,8 +15,5 @@ pub struct Task {
 pub trait Agent {
     fn name(&self) -> &str;
 
-    async fn execute(
-        &self,
-        task: &Task
-    ) -> Option<ToolRequest>;
+    async fn execute(&self, task: &Task) -> Option<ToolRequest>;
 }

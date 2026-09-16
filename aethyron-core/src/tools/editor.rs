@@ -1,24 +1,18 @@
 use anyhow::Result;
 use std::fs;
-use std::path::{Path, PathBuf};
 use std::io::Write;
+use std::path::{Path, PathBuf};
 
 pub struct EditorTool;
 
 impl EditorTool {
-
     fn resolve_path(path: impl AsRef<Path>) -> PathBuf {
         let workspace = Path::new("workspace/missions");
 
         workspace.join(path)
     }
 
-
-    pub fn write(
-        path: impl AsRef<Path>,
-        content: &str
-    ) -> Result<()> {
-
+    pub fn write(path: impl AsRef<Path>, content: &str) -> Result<()> {
         let full_path = Self::resolve_path(path);
 
         if let Some(parent) = full_path.parent() {
@@ -30,12 +24,7 @@ impl EditorTool {
         Ok(())
     }
 
-
-    pub fn append(
-        path: impl AsRef<Path>,
-        content: &str
-    ) -> Result<()> {
-
+    pub fn append(path: impl AsRef<Path>, content: &str) -> Result<()> {
         let full_path = Self::resolve_path(path);
 
         if let Some(parent) = full_path.parent() {

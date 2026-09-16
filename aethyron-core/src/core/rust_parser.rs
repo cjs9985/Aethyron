@@ -1,13 +1,10 @@
 pub struct RustParser;
 
 impl RustParser {
-
     pub fn extract_symbols(source: &str) -> Vec<String> {
-
         let mut symbols = Vec::new();
 
         for line in source.lines() {
-
             let line = line.trim();
 
             if line.starts_with("pub struct ")

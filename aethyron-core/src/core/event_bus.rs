@@ -8,11 +8,6 @@ impl EventBus {
     }
 
     pub fn publish(&self, event: Event) {
-        println!(
-            "[{}] [{}] {}",
-            event.timestamp,
-            event.source,
-            event.message
-        );
+        println!("[{}] [{}] {}", event.timestamp, event.source, event.message);
     }
 }
