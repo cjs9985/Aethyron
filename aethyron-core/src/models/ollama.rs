@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 
 const DEFAULT_OLLAMA_URL: &str = "http://127.0.0.1:11434";
 const DEFAULT_MODEL: &str = "qwen2.5-coder:7b";
+/// Vision-capable model used when the user attaches an image.
+const VISION_MODEL: &str = "llava:7b";
 
 #[derive(Serialize)]
 struct OllamaRequest {
@@ -11,6 +13,9 @@ struct OllamaRequest {
     prompt: String,
     stream: bool,
     temperature: f32,
+    /// Optional list of base64-encoded images (multimodal models only).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    images: Option<Vec<String>>,
 }
 
 #[derive(Deserialize)]
@@ -55,6 +60,74 @@ impl OllamaClient {
         Ok(response.models.iter().any(|model| model.name == self.model))
     }
 
+    /// Check whether the vision model is available locally.
+    pub async fn check_vision_model(&self) -> Result<bool> {
+        let endpoint = format!("{}/api/tags", DEFAULT_OLLAMA_URL);
+
+        let response = reqwest::Client::new()
+            .get(endpoint)
+            .send()
+            .await?
+            .error_for_status()?
+            .json::<OllamaTagsResponse>()
+            .await?;
+
+        Ok(response
+            .models
+            .iter()
+            .any(|m| m.name.starts_with("llava")))
+    }
+
+    /// Send a conversational message that includes one or more images.
+    /// `images` must be raw base64-encoded image bytes (no data-URL prefix).
+    pub async fn chat_with_image(
+        &self,
+        message: &str,
+        images: Vec<String>,
+        conversation_history: &str,
+    ) -> Result<String> {
+        println!("🖼️  Sending multimodal message to Ollama ({})...", VISION_MODEL);
+
+        let client = reqwest::Client::new();
+
+        let system_prompt = r#"You are Aethyron, an autonomous AI coding assistant with vision capabilities.
+When the user sends an image, describe what you see and relate it to any engineering context provided.
+If the image shows code, a diagram, an error, or a UI screenshot, analyse it carefully and provide
+actionable insights or implement what is requested.
+Be concise and direct. Do not output markdown code fences unless the user asks for code."#;
+
+        let prompt = if conversation_history.is_empty() {
+            message.to_string()
+        } else {
+            format!(
+                "Conversation so far:\n{}\n\nUser: {}",
+                conversation_history, message
+            )
+        };
+
+        let request = OllamaRequest {
+            model: VISION_MODEL.to_string(),
+            system: system_prompt.to_string(),
+            prompt,
+            stream: false,
+            temperature: 0.7,
+            images: Some(images),
+        };
+
+        let response = client
+            .post(&self.endpoint)
+            .json(&request)
+            .send()
+            .await?
+            .error_for_status()?
+            .json::<OllamaResponse>()
+            .await?;
+
+        println!("📡 Vision response received from Ollama");
+
+        Ok(response.response.trim().to_string())
+    }
+
     pub async fn generate(&self, prompt: &str) -> Result<String> {
         println!("🧠 Sending request to Ollama...");
         println!("⏳ Model is reasoning...");
@@ -95,6 +168,7 @@ Always produce a valid PATH.
             prompt: prompt.to_string(),
             stream: false,
             temperature: 0.0,
+            images: None,
         };
 
         let response = client
@@ -146,6 +220,7 @@ Do not output JSON. Do not output code blocks unless the user specifically asks 
             prompt,
             stream: false,
             temperature: 0.7,
+            images: None,
         };
 
         let response = client

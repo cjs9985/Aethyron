@@ -105,6 +105,9 @@ struct MissionRequest {
 #[derive(Deserialize)]
 struct ChatRequest {
     message: String,
+    /// Optional base64-encoded image (no data-URL prefix — raw base64 only).
+    /// When present the vision model is used instead of the coding model.
+    image: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -141,6 +144,45 @@ async fn post_chat(
     };
     if let Err(e) = MemoryStore::save_turn(&user_turn) {
         eprintln!("⚠️  Could not persist user turn: {}", e);
+    }
+
+    // ── Image path: use vision model, skip full mission orchestration ──
+    if let Some(image_b64) = payload.image {
+        chat_state.send("progress", "🖼️  Analysing image with vision model…");
+
+        let ollama = crate::models::ollama::OllamaClient::new();
+        let reply = match ollama
+            .chat_with_image(&message, vec![image_b64], &history.format_for_prompt())
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                let msg = format!(
+                    "❌ Vision model error: {}. Make sure llava:7b is installed (`ollama pull llava:7b`).",
+                    e
+                );
+                chat_state.send("error", &msg);
+                return axum::Json(serde_json::json!({ "error": msg }));
+            }
+        };
+
+        let assistant_turn = ConversationTurn {
+            role: "aethyron".to_string(),
+            content: reply.clone(),
+        };
+        if let Err(e) = MemoryStore::save_turn(&assistant_turn) {
+            eprintln!("⚠️  Could not persist assistant turn: {}", e);
+        }
+
+        chat_state.send("result", &reply);
+
+        return axum::Json(serde_json::json!({
+            "reply": reply,
+            "tasks_completed": 0,
+            "files_changed": 0,
+            "repairs": 0,
+            "success": true,
+        }));
     }
 
     // ------------------------------------------------------------------
@@ -369,6 +411,12 @@ async fn run_doctor() -> bool {
             println!("FAIL Ollama check: {}", error);
             healthy = false;
         }
+    }
+
+    match OllamaClient::new().check_vision_model().await {
+        Ok(true) => println!("PASS Vision model (llava:7b) available"),
+        Ok(false) => println!("WARN Vision model (llava:7b) not found — image chat unavailable. Run: ollama pull llava:7b"),
+        Err(error) => println!("WARN Vision model check failed: {}", error),
     }
 
     println!("==============================");
