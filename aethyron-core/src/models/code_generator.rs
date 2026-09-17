@@ -1,12 +1,12 @@
 use anyhow::{Result, anyhow};
 
-use crate::models::{code_change::CodeChange, fix_request::FixRequest, ollama::OllamaClient};
+use crate::models::{code_change::CodeChange, fix_request::FixRequest, model_client::ModelClient};
 
 pub struct CodeGenerator;
 
 impl CodeGenerator {
     pub async fn generate(instruction: &str, project_index: &str) -> Result<CodeChange> {
-        let client = OllamaClient::new();
+        let client = ModelClient::new();
 
         let prompt = format!(
             r#"You are Aethyron's autonomous Rust code generation engine.
@@ -124,7 +124,7 @@ Verify hashes during authentication.
     }
 
     pub async fn fix(request: &FixRequest) -> Result<CodeChange> {
-        let client = OllamaClient::new();
+        let client = ModelClient::new();
 
         let prompt = format!(
             r#"

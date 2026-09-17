@@ -1,2 +1,5 @@
-
 target/
+
+# Local environment — never commit real keys
+.env
+!.env.example

@@ -4,7 +4,7 @@ use serde_json;
 use super::{Agent, Task};
 
 use crate::models::{
-    ollama::OllamaClient, plan::Plan, project_context::ProjectContext, tool_request::ToolRequest,
+    model_client::ModelClient, plan::Plan, project_context::ProjectContext, tool_request::ToolRequest,
 };
 
 pub struct PlannerAgent;
@@ -54,7 +54,7 @@ impl PlannerAgent {
         task: &Task,
         context: Option<&ProjectContext>,
     ) -> Option<Plan> {
-        let client = OllamaClient::new();
+        let client = ModelClient::new();
         let memory = context.map(|ctx| ctx.memory.as_str()).unwrap_or("");
         let project_index = context.map(|ctx| ctx.project_index.as_str()).unwrap_or("");
         let conversation = context.map(|ctx| ctx.conversation.as_str()).unwrap_or("");

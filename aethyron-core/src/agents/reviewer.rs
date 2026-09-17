@@ -2,7 +2,7 @@ use async_trait::async_trait;
 
 use super::{Agent, Task};
 
-use crate::models::{ollama::OllamaClient, review_report::ReviewReport, tool_request::ToolRequest};
+use crate::models::{model_client::ModelClient, review_report::ReviewReport, tool_request::ToolRequest};
 
 pub struct ReviewerAgent;
 
@@ -112,7 +112,7 @@ impl ReviewerAgent {
     }
 
     async fn ai_review(&self, task: &Task) -> Result<String, String> {
-        let client = OllamaClient::new();
+        let client = ModelClient::new();
 
         let prompt = format!(
             "Review this engineering task:\n{}\n\n\

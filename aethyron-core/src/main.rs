@@ -21,6 +21,7 @@ use crate::core::context_builder::ContextBuilder;
 use crate::core::orchestrator::{Mission, Orchestrator};
 use crate::core::project_indexer::ProjectIndexer;
 use crate::mcp::AethyronMcp;
+use crate::models::model_client::ModelClient;
 use crate::models::ollama::OllamaClient;
 
 use axum::{
@@ -150,7 +151,7 @@ async fn post_chat(
     if let Some(image_b64) = payload.image {
         chat_state.send("progress", "🖼️  Analysing image with vision model…");
 
-        let ollama = crate::models::ollama::OllamaClient::new();
+        let ollama = ModelClient::new();
         let reply = match ollama
             .chat_with_image(&message, vec![image_b64], &history.format_for_prompt())
             .await
@@ -221,7 +222,7 @@ async fn post_chat(
     if is_conversational {
         chat_state.send("progress", "💬 Thinking…");
 
-        let ollama = crate::models::ollama::OllamaClient::new();
+        let ollama = ModelClient::new();
         let conv_history = history.format_for_prompt();
 
         match ollama.chat(&message, &conv_history).await {
@@ -544,6 +545,9 @@ async fn run_chat() {
 
 #[tokio::main]
 async fn main() {
+    // Load .env if present — silently ignored when absent
+    let _ = dotenvy::dotenv();
+
     let args: Vec<String> = env::args().skip(1).collect();
 
     if args.first().map(String::as_str) == Some("mcp") {
