@@ -16,6 +16,9 @@ struct OllamaRequest {
     /// Optional list of base64-encoded images (multimodal models only).
     #[serde(skip_serializing_if = "Option::is_none")]
     images: Option<Vec<String>>,
+    /// Maximum tokens to generate. None = model default (often very large).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    num_predict: Option<u32>,
 }
 
 #[derive(Deserialize)]
@@ -112,6 +115,7 @@ Be concise and direct. Do not output markdown code fences unless the user asks f
             stream: false,
             temperature: 0.7,
             images: Some(images),
+            num_predict: None,
         };
 
         let response = client
@@ -169,6 +173,7 @@ Always produce a valid PATH.
             stream: false,
             temperature: 0.0,
             images: None,
+            num_predict: None,
         };
 
         let response = client
@@ -221,6 +226,7 @@ Do not output JSON. Do not output code blocks unless the user specifically asks 
             stream: false,
             temperature: 0.7,
             images: None,
+            num_predict: Some(512),
         };
 
         let response = client

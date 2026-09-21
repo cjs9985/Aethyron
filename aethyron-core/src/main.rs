@@ -124,36 +124,44 @@ async fn post_chat(
 ) -> axum::Json<serde_json::Value> {
     let message = payload.message.trim().to_string();
 
-    if message.is_empty() {
-        return axum::Json(serde_json::json!({
-            "error": "Message cannot be empty."
-        }));
-    }
-
-    // Load prior conversation turns (up to 20) for context.
-    let prior_turns = MemoryStore::load_conversation(20).unwrap_or_default();
-    let mut history = ConversationHistory::new();
-    for turn in prior_turns {
-        history.add(turn.role, turn.content);
-    }
-    history.add("user", &message);
-
-    // Persist the user turn.
-    let user_turn = ConversationTurn {
-        role: "user".to_string(),
-        content: message.clone(),
-    };
-    if let Err(e) = MemoryStore::save_turn(&user_turn) {
-        eprintln!("⚠️  Could not persist user turn: {}", e);
-    }
-
     // ── Image path: use vision model, skip full mission orchestration ──
+    // NOTE: empty message is allowed when an image is attached — the UI
+    // substitutes a default prompt in that case ("What do you see in this image?").
     if let Some(image_b64) = payload.image {
+        // Reject only if both message and image are empty.
+        if message.is_empty() && image_b64.trim().is_empty() {
+            return axum::Json(serde_json::json!({
+                "error": "Message cannot be empty."
+            }));
+        }
+
+        // Load prior conversation turns (up to 20) for context.
+        let prior_turns = MemoryStore::load_conversation(20).unwrap_or_default();
+        let mut history = ConversationHistory::new();
+        for turn in prior_turns {
+            history.add(turn.role, turn.content);
+        }
+        let display_message = if message.is_empty() {
+            "What do you see in this image?".to_string()
+        } else {
+            message.clone()
+        };
+        history.add("user", &display_message);
+
+        // Persist the user turn.
+        let user_turn = ConversationTurn {
+            role: "user".to_string(),
+            content: display_message.clone(),
+        };
+        if let Err(e) = MemoryStore::save_turn(&user_turn) {
+            eprintln!("⚠️  Could not persist user turn: {}", e);
+        }
+
         chat_state.send("progress", "🖼️  Analysing image with vision model…");
 
         let ollama = ModelClient::new();
         let reply = match ollama
-            .chat_with_image(&message, vec![image_b64], &history.format_for_prompt())
+            .chat_with_image(&display_message, vec![image_b64], &history.format_for_prompt())
             .await
         {
             Ok(r) => r,
@@ -184,6 +192,30 @@ async fn post_chat(
             "repairs": 0,
             "success": true,
         }));
+    }
+
+    // For the non-image path, reject empty messages.
+    if message.is_empty() {
+        return axum::Json(serde_json::json!({
+            "error": "Message cannot be empty."
+        }));
+    }
+
+    // Load prior conversation turns (up to 20) for context.
+    let prior_turns = MemoryStore::load_conversation(20).unwrap_or_default();
+    let mut history = ConversationHistory::new();
+    for turn in prior_turns {
+        history.add(turn.role, turn.content);
+    }
+    history.add("user", &message);
+
+    // Persist the user turn.
+    let user_turn = ConversationTurn {
+        role: "user".to_string(),
+        content: message.clone(),
+    };
+    if let Err(e) = MemoryStore::save_turn(&user_turn) {
+        eprintln!("⚠️  Could not persist user turn: {}", e);
     }
 
     // ------------------------------------------------------------------

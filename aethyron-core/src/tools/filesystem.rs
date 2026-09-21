@@ -22,8 +22,11 @@ impl FileSystem {
 
                 let entry_path = entry.path();
 
-                // Ignore build artifacts
-                if entry_path.ends_with("target") {
+                // Ignore build artifacts, dependency trees, and VCS internals
+                if entry_path.ends_with("target")
+                    || entry_path.ends_with("node_modules")
+                    || entry_path.ends_with(".git")
+                {
                     continue;
                 }
 

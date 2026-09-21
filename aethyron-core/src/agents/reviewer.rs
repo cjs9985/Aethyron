@@ -123,7 +123,9 @@ impl ReviewerAgent {
             task.description
         );
 
-        match client.generate(&prompt).await {
+        // Use chat() — not generate() — so the model returns plain language
+        // feedback instead of a PATH:/CODE protocol block.
+        match client.chat(&prompt, "").await {
             Ok(response) => Ok(response),
             Err(error) => Err(error.to_string()),
         }

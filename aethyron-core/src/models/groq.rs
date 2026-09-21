@@ -1,16 +1,16 @@
 /// Groq cloud API client — OpenAI-compatible endpoint.
 ///
-/// Uses `llama-3.3-70b-versatile` for code generation,
-/// `llama-3.1-70b-versatile` for chat/review, and
+/// Uses `llama-3.3-70b-versatile` for text/code tasks and
 /// `meta-llama/llama-4-scout-17b-16e-instruct` for vision (image input).
 use anyhow::{Result, anyhow};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 const GROQ_API_URL: &str = "https://api.groq.com/openai/v1/chat/completions";
-/// Single model for all tasks — text, code, and vision.
-/// qwen/qwen3.6-27b is Groq's current multimodal flagship (Sept 2026).
-const GROQ_MODEL: &str = "qwen/qwen3.6-27b";
+/// Model used for text and code generation tasks.
+const GROQ_MODEL: &str = "llama-3.3-70b-versatile";
+/// Model used for vision (image input) tasks — must support multimodal input.
+const GROQ_VISION_MODEL: &str = "meta-llama/llama-4-scout-17b-16e-instruct";
 
 // ---------------------------------------------------------------------------
 // Wire types — text-only path
@@ -148,7 +148,7 @@ impl GroqClient {
         ];
 
         let request = GroqVisionRequest {
-            model: GROQ_MODEL.to_string(),
+            model: GROQ_VISION_MODEL.to_string(),
             messages: vec![
                 GroqVisionMessage {
                     role: "system".to_string(),
@@ -229,7 +229,7 @@ Do not output JSON. Do not output code blocks unless the user specifically asks 
             format!("Conversation so far:\n{}\n\nUser: {}", conversation_history, message)
         };
 
-        let result = self.complete_text(GROQ_MODEL, system, &user, 0.7, 2048).await?;
+        let result = self.complete_text(GROQ_MODEL, system, &user, 0.7, 512).await?;
         println!("📡 Conversational response received from Groq");
         Ok(result)
     }
@@ -243,7 +243,7 @@ Do not output JSON. Do not output code blocks unless the user specifically asks 
         images: Vec<String>,
         conversation_history: &str,
     ) -> Result<String> {
-        println!("🖼️  Sending image to Groq vision model ({})...", GROQ_MODEL);
+        println!("🖼️  Sending image to Groq vision model ({})...", GROQ_VISION_MODEL);
 
         let system = r#"You are Aethyron, an autonomous AI coding assistant with vision capabilities.
 When the user sends an image, analyse it carefully.
