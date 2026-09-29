@@ -164,10 +164,7 @@ impl AgentExecutor for AethyronA2AExecutor {
         }))
     }
 
-    fn cancel(
-        &self,
-        ctx: ExecutorContext,
-    ) -> BoxStream<'static, Result<StreamResponse, A2AError>> {
+    fn cancel(&self, ctx: ExecutorContext) -> BoxStream<'static, Result<StreamResponse, A2AError>> {
         let task = Task {
             id: ctx.task_id,
             context_id: ctx.context_id,
@@ -181,8 +178,6 @@ impl AgentExecutor for AethyronA2AExecutor {
             metadata: None,
         };
 
-        Box::pin(stream::once(async move {
-            Ok(StreamResponse::Task(task))
-        }))
+        Box::pin(stream::once(async move { Ok(StreamResponse::Task(task)) }))
     }
 }

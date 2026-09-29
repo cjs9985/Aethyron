@@ -1,17 +1,17 @@
+mod a2a_executor;
 mod agents;
 mod core;
 mod mcp;
 mod memory;
 mod models;
 mod tools;
-mod a2a_executor;
 
 use crate::memory::store::MemoryStore;
 use crate::models::conversation::{ConversationHistory, ConversationTurn};
 
 use a2a::*;
 use a2a_server::{
-    agent_card::{agent_card_router, StaticAgentCard},
+    agent_card::{StaticAgentCard, agent_card_router},
     handler::DefaultRequestHandler,
     jsonrpc::jsonrpc_router,
     task_store::InMemoryTaskStore,
@@ -25,10 +25,10 @@ use crate::models::model_client::ModelClient;
 use crate::models::ollama::OllamaClient;
 
 use axum::{
+    Json, Router,
     extract::State,
     response::sse::{Event, KeepAlive, Sse},
     routing::{get, post},
-    Json, Router,
 };
 use futures::stream::{self, Stream};
 use rmcp::ServiceExt;
@@ -161,7 +161,11 @@ async fn post_chat(
 
         let ollama = ModelClient::new();
         let reply = match ollama
-            .chat_with_image(&display_message, vec![image_b64], &history.format_for_prompt())
+            .chat_with_image(
+                &display_message,
+                vec![image_b64],
+                &history.format_for_prompt(),
+            )
             .await
         {
             Ok(r) => r,
@@ -231,25 +235,54 @@ async fn post_chat(
     let word_count = message.split_whitespace().count();
 
     let question_starters = [
-        "what", "who", "how", "why", "when", "where", "can you", "could you",
-        "do you", "are you", "is there", "tell me", "explain", "describe",
-        "hello", "hi", "hey", "thanks", "thank you",
+        "what",
+        "who",
+        "how",
+        "why",
+        "when",
+        "where",
+        "can you",
+        "could you",
+        "do you",
+        "are you",
+        "is there",
+        "tell me",
+        "explain",
+        "describe",
+        "hello",
+        "hi",
+        "hey",
+        "thanks",
+        "thank you",
     ];
     let coding_verbs = [
-        "implement", "create", "add", "fix", "refactor", "write", "build",
-        "generate", "update", "modify", "remove", "delete", "rename",
-        "migrate", "integrate", "optimize", "deploy", "test",
+        "implement",
+        "create",
+        "add",
+        "fix",
+        "refactor",
+        "write",
+        "build",
+        "generate",
+        "update",
+        "modify",
+        "remove",
+        "delete",
+        "rename",
+        "migrate",
+        "integrate",
+        "optimize",
+        "deploy",
+        "test",
     ];
 
-    let is_question = message.trim_end().ends_with('?')
-        || question_starters
-            .iter()
-            .any(|w| lower.starts_with(w));
+    let is_question =
+        message.trim_end().ends_with('?') || question_starters.iter().any(|w| lower.starts_with(w));
 
     let has_coding_verb = coding_verbs.iter().any(|v| lower.contains(v));
 
-    let is_conversational = is_question && !has_coding_verb
-        || (word_count <= 8 && !has_coding_verb);
+    let is_conversational =
+        is_question && !has_coding_verb || (word_count <= 8 && !has_coding_verb);
 
     if is_conversational {
         chat_state.send("progress", "💬 Thinking…");
@@ -294,10 +327,7 @@ async fn post_chat(
     chat_state.send("progress", "🌌 Building project context…");
 
     // Build context with the current conversation history.
-    let context = match ContextBuilder::build_with_conversation(
-        ".",
-        history.format_for_prompt(),
-    ) {
+    let context = match ContextBuilder::build_with_conversation(".", history.format_for_prompt()) {
         Ok(ctx) => ctx,
         Err(error) => {
             let msg = format!("❌ Could not build project context: {}", error);
@@ -354,8 +384,9 @@ async fn chat_stream(
     let stream = stream::unfold(rx, |mut rx| async move {
         match rx.recv().await {
             Ok(chat_event) => {
-                let data = serde_json::to_string(&chat_event)
-                    .unwrap_or_else(|_| r#"{"kind":"error","message":"serialize error"}"#.to_string());
+                let data = serde_json::to_string(&chat_event).unwrap_or_else(|_| {
+                    r#"{"kind":"error","message":"serialize error"}"#.to_string()
+                });
                 let sse_event = Event::default().data(data);
                 Some((Ok(sse_event), rx))
             }
@@ -366,9 +397,7 @@ async fn chat_stream(
     Sse::new(stream).keep_alive(KeepAlive::default())
 }
 
-async fn run_mission(
-    Json(payload): Json<MissionRequest>,
-) -> axum::Json<serde_json::Value> {
+async fn run_mission(Json(payload): Json<MissionRequest>) -> axum::Json<serde_json::Value> {
     let goal = payload.goal.trim().to_string();
 
     if goal.is_empty() {
@@ -448,7 +477,9 @@ async fn run_doctor() -> bool {
 
     match OllamaClient::new().check_vision_model().await {
         Ok(true) => println!("PASS Vision model (llava:7b) available"),
-        Ok(false) => println!("WARN Vision model (llava:7b) not found — image chat unavailable. Run: ollama pull llava:7b"),
+        Ok(false) => println!(
+            "WARN Vision model (llava:7b) not found — image chat unavailable. Run: ollama pull llava:7b"
+        ),
         Err(error) => println!("WARN Vision model check failed: {}", error),
     }
 
@@ -477,7 +508,10 @@ async fn run_chat() {
     }
 
     if !history.is_empty() {
-        println!("📖 Resuming previous conversation ({} turns loaded).", history.turns.len());
+        println!(
+            "📖 Resuming previous conversation ({} turns loaded).",
+            history.turns.len()
+        );
         println!();
     }
 
@@ -530,17 +564,15 @@ async fn run_chat() {
         history.add("user", &input);
 
         // Build context with the current conversation history.
-        let context = match ContextBuilder::build_with_conversation(
-            ".",
-            history.format_for_prompt(),
-        ) {
-            Ok(ctx) => ctx,
-            Err(error) => {
-                println!("Aethyron > ❌ Could not build project context: {}", error);
-                println!();
-                continue;
-            }
-        };
+        let context =
+            match ContextBuilder::build_with_conversation(".", history.format_for_prompt()) {
+                Ok(ctx) => ctx,
+                Err(error) => {
+                    println!("Aethyron > ❌ Could not build project context: {}", error);
+                    println!();
+                    continue;
+                }
+            };
 
         println!();
         println!("Aethyron > 🌌 Running mission...");
@@ -639,30 +671,18 @@ async fn main() {
     // A2A
     // ---------------------------------------------------------------
 
-    let a2a_executor =
-        crate::a2a_executor::AethyronA2AExecutor::new();
+    let a2a_executor = crate::a2a_executor::AethyronA2AExecutor::new();
 
-    let a2a_task_store =
-        InMemoryTaskStore::new();
+    let a2a_task_store = InMemoryTaskStore::new();
 
-    let a2a_handler = Arc::new(
-        DefaultRequestHandler::new(
-            a2a_executor,
-            a2a_task_store,
-        )
-    );
+    let a2a_handler = Arc::new(DefaultRequestHandler::new(a2a_executor, a2a_task_store));
 
     let agent_card = AgentCard {
         name: "Aethyron".to_string(),
         description: "Aethyron autonomous coding agent".to_string(),
         version: "0.1.0".to_string(),
 
-        supported_interfaces: vec![
-            AgentInterface::new(
-                "http://127.0.0.1:3000/a2a",
-                "JSONRPC",
-            )
-        ],
+        supported_interfaces: vec![AgentInterface::new("http://127.0.0.1:3000/a2a", "JSONRPC")],
 
         capabilities: AgentCapabilities {
             streaming: Some(true),
@@ -671,35 +691,28 @@ async fn main() {
             extended_agent_card: None,
         },
 
-        default_input_modes: vec![
-            "text/plain".to_string()
-        ],
+        default_input_modes: vec!["text/plain".to_string()],
 
-        default_output_modes: vec![
-            "text/plain".to_string()
-        ],
+        default_output_modes: vec!["text/plain".to_string()],
 
-        skills: vec![
-            AgentSkill {
-                id: "aethyron-mission".to_string(),
-                name: "Aethyron Mission Execution".to_string(),
-                description:
-                    "Plans, generates, reviews, and repairs code for autonomous missions."
-                        .to_string(),
-                tags: vec![
-                    "coding".to_string(),
-                    "planning".to_string(),
-                    "repair".to_string(),
-                ],
-                examples: Some(vec![
-                    "Inspect and improve this Rust project".to_string(),
-                    "Implement the requested feature".to_string(),
-                ]),
-                input_modes: None,
-                output_modes: None,
-                security_requirements: None,
-            }
-        ],
+        skills: vec![AgentSkill {
+            id: "aethyron-mission".to_string(),
+            name: "Aethyron Mission Execution".to_string(),
+            description: "Plans, generates, reviews, and repairs code for autonomous missions."
+                .to_string(),
+            tags: vec![
+                "coding".to_string(),
+                "planning".to_string(),
+                "repair".to_string(),
+            ],
+            examples: Some(vec![
+                "Inspect and improve this Rust project".to_string(),
+                "Implement the requested feature".to_string(),
+            ]),
+            input_modes: None,
+            output_modes: None,
+            security_requirements: None,
+        }],
 
         provider: None,
         documentation_url: None,
@@ -709,9 +722,7 @@ async fn main() {
         signatures: None,
     };
 
-    let a2a_card = Arc::new(
-        StaticAgentCard::new(agent_card)
-    );
+    let a2a_card = Arc::new(StaticAgentCard::new(agent_card));
 
     // ---------------------------------------------------------------
     // HTTP API + UI Static Files
@@ -730,19 +741,26 @@ async fn main() {
         .route("/chat/stream", get(chat_stream))
         .nest("/a2a", jsonrpc_router(a2a_handler).with_state(()))
         .merge(agent_card_router(a2a_card).with_state(()))
-        .fallback_service(
-            ServeDir::new(ui_dir)
-                .fallback(ServeFile::new(ui_index))
-        )
+        .fallback_service(ServeDir::new(ui_dir).fallback(ServeFile::new(ui_index)))
         .layer(CorsLayer::very_permissive())
         .with_state(chat_state);
 
-    let listener = tokio::net::TcpListener::bind(
-        "127.0.0.1:3000"
-    )
-    .await
-    .expect("failed to bind Aethyron API");
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:3000").await;
 
+    let listener = match tokio::net::TcpListener::bind("127.0.0.1:3000").await {
+        Ok(l) => l,
+        Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
+            eprintln!(
+                "❌ Port 3000 is already in use — another Aethyron core instance is still running."
+            );
+            eprintln!("   Stop the other instance, then run this one again.");
+            std::process::exit(1);
+        }
+        Err(e) => {
+            eprintln!("❌ Could not bind Aethyron API on 127.0.0.1:3000: {}", e);
+            std::process::exit(1);
+        }
+    };
     println!("╔══════════════════════════════════════════╗");
     println!("║           AETHYRON  ONLINE               ║");
     println!("╠══════════════════════════════════════════╣");

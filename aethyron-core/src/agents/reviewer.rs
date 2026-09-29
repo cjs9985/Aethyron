@@ -2,7 +2,9 @@ use async_trait::async_trait;
 
 use super::{Agent, Task};
 
-use crate::models::{model_client::ModelClient, review_report::ReviewReport, tool_request::ToolRequest};
+use crate::models::{
+    model_client::ModelClient, review_report::ReviewReport, tool_request::ToolRequest,
+};
 
 pub struct ReviewerAgent;
 
@@ -145,11 +147,7 @@ impl Agent for ReviewerAgent {
 
         println!(
             "   Review result: passed={} structural={} security={} compilation={} ai_review={}",
-            report.passed,
-            report.structural,
-            report.security,
-            report.compilation,
-            report.ai_review,
+            report.passed, report.structural, report.security, report.compilation, report.ai_review,
         );
 
         if !report.feedback.is_empty() {

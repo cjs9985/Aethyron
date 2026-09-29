@@ -3,8 +3,8 @@ use async_trait::async_trait;
 use super::{Agent, Task};
 
 use crate::models::{
-    code_generator::CodeGenerator, coder_result::CoderResult,
-    file_operation::FileOperation, project_context::ProjectContext, tool_request::ToolRequest,
+    code_generator::CodeGenerator, coder_result::CoderResult, file_operation::FileOperation,
+    project_context::ProjectContext, tool_request::ToolRequest,
 };
 
 use crate::core::repair_engine::RepairEngine;
@@ -137,7 +137,8 @@ impl CoderAgent {
 
             let cargo_error = crate::tools::dispatcher::ToolDispatcher::execute(
                 crate::models::tool_request::ToolRequest::CargoCheck,
-            ).output;
+            )
+            .output;
 
             println!("❌ Cargo error:\n{}", cargo_error);
 

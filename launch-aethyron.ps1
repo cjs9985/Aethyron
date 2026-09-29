@@ -10,17 +10,27 @@ $UiRoot       = Join-Path $ProjectRoot "aethyron-ui"
 
 $ServerUrl = "http://127.0.0.1:3000"
 $HealthUrl = "$ServerUrl/health"
+$ProgressPreference = "SilentlyContinue"
 
 function Write-Status($msg, $color = "Cyan") {
     Write-Host "  $msg" -ForegroundColor $color
 }
 
+function Test-HttpOk($url) {
+    try {
+        $resp = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop
+        return $resp.StatusCode -eq 200
+    } catch {
+        return $false
+    }
+}
+
 Clear-Host
 
 Write-Host ""
-Write-Host "  ╔══════════════════════════════════════════╗" -ForegroundColor DarkBlue
-Write-Host "  ║           AETHYRON  LAUNCHER             ║" -ForegroundColor Blue
-Write-Host "  ╚══════════════════════════════════════════╝" -ForegroundColor DarkBlue
+Write-Host "  ==========================================" -ForegroundColor DarkBlue
+Write-Host "            AETHYRON  LAUNCHER" -ForegroundColor Blue
+Write-Host "  ==========================================" -ForegroundColor DarkBlue
 Write-Host ""
 
 # ------------------------------------------------------------
@@ -60,6 +70,7 @@ if (-not $ollamaRunning) {
             try {
                 $response = Invoke-WebRequest `
                     -Uri "http://127.0.0.1:11434/api/tags" `
+                    -UseBasicParsing `
                     -TimeoutSec 2 `
                     -ErrorAction Stop
 
@@ -88,18 +99,7 @@ if (-not $ollamaRunning) {
 # 3. Check whether Aethyron is already running
 # ------------------------------------------------------------
 
-$alreadyUp = $false
-
-try {
-    $resp = Invoke-WebRequest `
-        -Uri $HealthUrl `
-        -TimeoutSec 2 `
-        -ErrorAction Stop
-
-    if ($resp.StatusCode -eq 200) {
-        $alreadyUp = $true
-    }
-} catch {}
+$alreadyUp = Test-HttpOk $HealthUrl
 
 if ($alreadyUp) {
 
@@ -107,60 +107,74 @@ if ($alreadyUp) {
 
 } else {
 
+    $binaryPath = Join-Path $AethyronRoot "target\release\aethyron-core.exe"
+    $uiIndex = Join-Path $AethyronRoot "ui-dist\index.html"
+    $forceRebuild = $env:AETHYRON_REBUILD -eq "1"
+
     # --------------------------------------------------------
-    # 4. Build the React UI
+    # 4. Build the React UI (only when missing)
     # --------------------------------------------------------
 
-    Write-Status "Building Aethyron UI..." "Yellow"
+    if ($forceRebuild -or -not (Test-Path $uiIndex)) {
+        Write-Status "Building Aethyron UI..." "Yellow"
 
-    Push-Location $UiRoot
+        Push-Location $UiRoot
 
-    try {
-        & npm run build
+        try {
+            & npm run build
 
-        if ($LASTEXITCODE -ne 0) {
-            Write-Status "UI build failed." "Red"
-            Pop-Location
-            Read-Host "Press Enter to exit"
-            exit 1
+            if ($LASTEXITCODE -ne 0) {
+                Write-Status "UI build failed." "Red"
+                Pop-Location
+                Read-Host "Press Enter to exit"
+                exit 1
+            }
         }
-    }
-    finally {
-        Pop-Location
-    }
-
-    Write-Status "UI build complete." "Green"
-
-    # --------------------------------------------------------
-    # 5. Build the Rust server
-    # --------------------------------------------------------
-
-    Write-Status "Building Aethyron release binary..." "Yellow"
-
-    Push-Location $AethyronRoot
-
-    try {
-        & cargo build --release
-
-        if ($LASTEXITCODE -ne 0) {
-            Write-Status "Rust build failed." "Red"
+        finally {
             Pop-Location
-            Read-Host "Press Enter to exit"
-            exit 1
         }
-    }
-    finally {
-        Pop-Location
+
+        Write-Status "UI build complete." "Green"
+    } else {
+        Write-Status "Using existing UI build." "Green"
     }
 
-    Write-Status "Rust build complete." "Green"
+    # --------------------------------------------------------
+    # 5. Build the Rust server (only when missing)
+    # --------------------------------------------------------
 
-    $binaryPath = Join-Path `
-        $AethyronRoot `
-        "target\release\aethyron-core.exe"
+    if ($forceRebuild -or -not (Test-Path $binaryPath)) {
+        Write-Status "Building Aethyron release binary..." "Yellow"
+
+        Push-Location $AethyronRoot
+
+        try {
+            & cargo build --release
+
+            if ($LASTEXITCODE -ne 0) {
+                Write-Status "Rust build failed." "Red"
+                Pop-Location
+                Read-Host "Press Enter to exit"
+                exit 1
+            }
+        }
+        finally {
+            Pop-Location
+        }
+
+        Write-Status "Rust build complete." "Green"
+    } else {
+        Write-Status "Using existing release binary." "Green"
+    }
 
     if (-not (Test-Path $binaryPath)) {
         Write-Status "Release binary was not produced." "Red"
+        Read-Host "Press Enter to exit"
+        exit 1
+    }
+
+    if (-not (Test-Path $uiIndex)) {
+        Write-Status "UI build was not produced." "Red"
         Read-Host "Press Enter to exit"
         exit 1
     }
@@ -192,17 +206,10 @@ if ($alreadyUp) {
 
     while ((Get-Date) -lt $deadline) {
 
-        try {
-            $r = Invoke-WebRequest `
-                -Uri $HealthUrl `
-                -TimeoutSec 2 `
-                -ErrorAction Stop
-
-            if ($r.StatusCode -eq 200) {
-                $ready = $true
-                break
-            }
-        } catch {}
+        if (Test-HttpOk $HealthUrl) {
+            $ready = $true
+            break
+        }
 
         Start-Sleep -Milliseconds 500
     }

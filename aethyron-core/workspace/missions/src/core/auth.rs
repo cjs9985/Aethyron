@@ -118,4 +118,42 @@ pub fn verify_password(password: &str, hash: &str) -> Result<bool, BcryptError> 
 
 pub fn hash_password(password: &str) -> Result<String, bcrypt::BcryptError> {
     hash(password, bcrypt::DEFAULT_COST)
+}use bcrypt;
+
+pub struct Auth {
+    hasher: bcrypt::Bcrypt,
+}
+
+impl Auth {
+    pub fn new() -> Self {
+        Auth {
+            hasher: bcrypt::Bcrypt::new(bcrypt::DEFAULT_COST),
+        }
+    }
+
+    pub fn hash_password(&self, password: &str) -> Result<String, bcrypt::BcryptError> {
+        self.hasher.hash(password)
+    }
+
+    pub fn verify_password(&self, password: &str, hash: &str) -> Result<bool, bcrypt::BcryptError> {
+        self.hasher.verify(password, hash)
+    }
+}#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_hash_password() {
+        let password = "password123";
+        let hashed_password = hash_password(password).unwrap();
+        assert_ne!(password, hashed_password);
+    }
+
+    #[test]
+    fn test_verify_password() {
+        let password = "password123";
+        let hashed_password = hash_password(password).unwrap();
+        assert!(verify_password(password, &hashed_password).unwrap());
+        assert!(!verify_password("wrong_password", &hashed_password).unwrap());
+    }
 }

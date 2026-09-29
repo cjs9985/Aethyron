@@ -31,31 +31,27 @@ impl ToolDispatcher {
                 },
             },
 
-            ToolRequest::AppendFile { path, content } => {
-                match EditorTool::append(path, &content) {
-                    Ok(()) => ToolResult {
-                        success: true,
-                        output: String::new(),
-                    },
-                    Err(error) => ToolResult {
-                        success: false,
-                        output: error.to_string(),
-                    },
-                }
-            }
+            ToolRequest::AppendFile { path, content } => match EditorTool::append(path, &content) {
+                Ok(()) => ToolResult {
+                    success: true,
+                    output: String::new(),
+                },
+                Err(error) => ToolResult {
+                    success: false,
+                    output: error.to_string(),
+                },
+            },
 
-            ToolRequest::CreateDirectory(path) => {
-                match std::fs::create_dir_all(&path) {
-                    Ok(()) => ToolResult {
-                        success: true,
-                        output: format!("Directory created: {}", path),
-                    },
-                    Err(error) => ToolResult {
-                        success: false,
-                        output: error.to_string(),
-                    },
-                }
-            }
+            ToolRequest::CreateDirectory(path) => match std::fs::create_dir_all(&path) {
+                Ok(()) => ToolResult {
+                    success: true,
+                    output: format!("Directory created: {}", path),
+                },
+                Err(error) => ToolResult {
+                    success: false,
+                    output: error.to_string(),
+                },
+            },
 
             ToolRequest::CargoCheck => match Compiler::check() {
                 Ok(output) => ToolResult {
@@ -82,10 +78,7 @@ impl ToolDispatcher {
             }
 
             ToolRequest::GitStatus => {
-                match std::process::Command::new("git")
-                    .arg("status")
-                    .output()
-                {
+                match std::process::Command::new("git").arg("status").output() {
                     Ok(output) => ToolResult {
                         success: output.status.success(),
                         output: String::from_utf8_lossy(&output.stdout).to_string(),

@@ -13,8 +13,8 @@ impl TerminalTool {
         // Combine stdout + stderr so callers see the full output.
         let combined = match (stdout.trim().is_empty(), stderr.trim().is_empty()) {
             (false, false) => format!("{}\n{}", stdout, stderr),
-            (true, false)  => stderr.to_string(),
-            _              => stdout.to_string(),
+            (true, false) => stderr.to_string(),
+            _ => stdout.to_string(),
         };
 
         if output.status.success() {

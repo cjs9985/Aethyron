@@ -2,7 +2,9 @@ use std::time::Instant;
 
 use uuid::Uuid;
 
-use crate::agents::{Agent, Task, coder::CoderAgent, planner::PlannerAgent, reviewer::ReviewerAgent};
+use crate::agents::{
+    Agent, Task, coder::CoderAgent, planner::PlannerAgent, reviewer::ReviewerAgent,
+};
 
 use crate::core::{
     context_builder::ContextBuilder,
@@ -68,7 +70,12 @@ impl Orchestrator {
 
         let phase_started_at = Instant::now();
 
-        let context = match mission.context.take().map(Ok).unwrap_or_else(|| ContextBuilder::build(".")) {
+        let context = match mission
+            .context
+            .take()
+            .map(Ok)
+            .unwrap_or_else(|| ContextBuilder::build("."))
+        {
             Ok(context) => context,
             Err(error) => {
                 println!("❌ Context build failed: {}", error);

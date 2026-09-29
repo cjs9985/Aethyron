@@ -4,7 +4,8 @@ use serde_json;
 use super::{Agent, Task};
 
 use crate::models::{
-    model_client::ModelClient, plan::Plan, project_context::ProjectContext, tool_request::ToolRequest,
+    model_client::ModelClient, plan::Plan, project_context::ProjectContext,
+    tool_request::ToolRequest,
 };
 
 pub struct PlannerAgent;

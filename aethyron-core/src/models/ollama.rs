@@ -75,10 +75,7 @@ impl OllamaClient {
             .json::<OllamaTagsResponse>()
             .await?;
 
-        Ok(response
-            .models
-            .iter()
-            .any(|m| m.name.starts_with("llava")))
+        Ok(response.models.iter().any(|m| m.name.starts_with("llava")))
     }
 
     /// Send a conversational message that includes one or more images.
@@ -89,7 +86,10 @@ impl OllamaClient {
         images: Vec<String>,
         conversation_history: &str,
     ) -> Result<String> {
-        println!("🖼️  Sending multimodal message to Ollama ({})...", VISION_MODEL);
+        println!(
+            "🖼️  Sending multimodal message to Ollama ({})...",
+            VISION_MODEL
+        );
 
         let client = reqwest::Client::new();
 

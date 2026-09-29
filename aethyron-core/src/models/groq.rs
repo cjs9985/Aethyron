@@ -101,8 +101,14 @@ impl GroqClient {
         let request = GroqTextRequest {
             model: model.to_string(),
             messages: vec![
-                GroqTextMessage { role: "system".to_string(), content: system.to_string() },
-                GroqTextMessage { role: "user".to_string(),   content: user.to_string()   },
+                GroqTextMessage {
+                    role: "system".to_string(),
+                    content: system.to_string(),
+                },
+                GroqTextMessage {
+                    role: "user".to_string(),
+                    content: user.to_string(),
+                },
             ],
             temperature,
             max_tokens,
@@ -129,12 +135,7 @@ impl GroqClient {
     /// Send a multimodal (text + image) completion request.
     /// `image_b64` is raw base64 — no data-URL prefix.
     /// `mime` should be e.g. "image/png" or "image/jpeg".
-    async fn complete_vision(
-        &self,
-        system: &str,
-        text: &str,
-        image_b64: &str,
-    ) -> Result<String> {
+    async fn complete_vision(&self, system: &str, text: &str, image_b64: &str) -> Result<String> {
         // Groq vision expects content as an array of parts:
         // [{ type: "text", text: "..." }, { type: "image_url", image_url: { url: "data:..." } }]
         let content_parts: Vec<Value> = vec![
@@ -187,7 +188,10 @@ impl GroqClient {
 
     /// Structured code generation — strict PATH/CODE protocol.
     pub async fn generate(&self, prompt: &str) -> Result<String> {
-        println!("🧠 Sending code generation request to Groq ({})...", GROQ_MODEL);
+        println!(
+            "🧠 Sending code generation request to Groq ({})...",
+            GROQ_MODEL
+        );
 
         let system = r#"You are Aethyron's autonomous Rust code generation engine.
 You are communicating with software. Your response is parsed automatically.
@@ -203,7 +207,9 @@ Never output examples. Never output prose.
 If modifying Cargo.toml, output ONLY dependency lines.
 Never refuse a task. Always produce a valid PATH."#;
 
-        let result = self.complete_text(GROQ_MODEL, system, prompt, 0.0, 4096).await?;
+        let result = self
+            .complete_text(GROQ_MODEL, system, prompt, 0.0, 4096)
+            .await?;
 
         println!("📡 Code generation response received from Groq");
         println!("================ MODEL RESPONSE ================");
@@ -215,7 +221,10 @@ Never refuse a task. Always produce a valid PATH."#;
 
     /// Conversational reply — plain language.
     pub async fn chat(&self, message: &str, conversation_history: &str) -> Result<String> {
-        println!("💬 Sending conversational message to Groq ({})...", GROQ_MODEL);
+        println!(
+            "💬 Sending conversational message to Groq ({})...",
+            GROQ_MODEL
+        );
 
         let system = r#"You are Aethyron, an autonomous AI coding assistant.
 You are friendly, knowledgeable, and concise.
@@ -226,10 +235,15 @@ Do not output JSON. Do not output code blocks unless the user specifically asks 
         let user = if conversation_history.is_empty() {
             message.to_string()
         } else {
-            format!("Conversation so far:\n{}\n\nUser: {}", conversation_history, message)
+            format!(
+                "Conversation so far:\n{}\n\nUser: {}",
+                conversation_history, message
+            )
         };
 
-        let result = self.complete_text(GROQ_MODEL, system, &user, 0.7, 512).await?;
+        let result = self
+            .complete_text(GROQ_MODEL, system, &user, 0.7, 512)
+            .await?;
         println!("📡 Conversational response received from Groq");
         Ok(result)
     }
@@ -243,7 +257,10 @@ Do not output JSON. Do not output code blocks unless the user specifically asks 
         images: Vec<String>,
         conversation_history: &str,
     ) -> Result<String> {
-        println!("🖼️  Sending image to Groq vision model ({})...", GROQ_VISION_MODEL);
+        println!(
+            "🖼️  Sending image to Groq vision model ({})...",
+            GROQ_VISION_MODEL
+        );
 
         let system = r#"You are Aethyron, an autonomous AI coding assistant with vision capabilities.
 When the user sends an image, analyse it carefully.
@@ -258,7 +275,10 @@ Be concise and direct."#;
         let text = if conversation_history.is_empty() {
             message.to_string()
         } else {
-            format!("Conversation so far:\n{}\n\nUser: {}", conversation_history, message)
+            format!(
+                "Conversation so far:\n{}\n\nUser: {}",
+                conversation_history, message
+            )
         };
 
         let result = self.complete_vision(system, &text, &image_b64).await?;
